@@ -96,6 +96,13 @@ gitGraph
     checkout develop
     merge feature/OIS-37-login
 
+    branch fix/OIS-52-login-validation
+    checkout fix/OIS-52-login-validation
+    commit id:"Fix Validation"
+
+    checkout develop
+    merge fix/OIS-52-login-validation
+
     branch docs/OIS-15-update-readme
     checkout docs/OIS-15-update-readme
     commit id:"Update README"
