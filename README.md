@@ -204,7 +204,7 @@ gitGraph
 Jira → OIS-42 ブランチ運用ルールの制定
 branch → feature/OIS-42-branch-rule
 commit message → fix: マーメイド図の修正
-PR title → [OIS-8] ブランチ運用ルールの制定
+PR title → [OIS-42] ブランチ運用ルールの制定
 ```
 &nbsp;  
 
