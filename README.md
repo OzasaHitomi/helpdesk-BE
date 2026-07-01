@@ -43,10 +43,7 @@ main
 &nbsp; 
 
 <docsブランチで扱うドキュメント>
-* READMEの修正
-  * ブランチ運用ルール
-  * コミット・PRルール
-  * BE環境構築手順
+* README
 <!-- * API仕様
 * DB設計
 * 認証仕様 -->
@@ -174,14 +171,15 @@ gitGraph
 &nbsp;  
 
 #### 1.2.3 禁止事項
-* `feature/` → `main` への直接マージは禁止
-* `fix/*` → `main` への直接マージは禁止
-* `docs/*` → `main` への直接マージは禁止
-* `feature/*` 同士、`fix/*` 同士、`docs/*` 同士のマージは禁止
-* `feature/*`・`fix/*`・`docs/*` 同士のマージは禁止（`develop` 配下のブランチは `develop` にのみマージすること）
-* `develop`・`main` への直接 Push 禁止
-* レビューが完了していない Pull Request のマージ禁止
-* Pull Request を作成した本人によるセルフマージ禁止
+* `feature/` → `main` への直接マージ
+* `fix/*` → `main` への直接マージ
+* `docs/*` → `main` への直接マージ
+* `feature/*` 同士、`fix/*` 同士、`docs/*` 同士のマージ
+* `feature/*`・`fix/*`・`docs/*` 同士のマージ
+  * `develop` 配下のブランチは `develop` にのみマージすること
+* `develop`・`main` への直接 Push
+* レビューが完了していない Pull Request のマージ
+* Pull Request を作成した本人によるセルフマージ
 
 &nbsp;  
 
