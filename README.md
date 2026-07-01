@@ -269,6 +269,11 @@ hotfix/OIS-OIS-99-critical-bug
 ---
 &nbsp;  
 ### 2.1 リポジトリをクローン
+階層構成は、helpdeskフォルダ配下にhelpdesk-BEとhelpdesk-FEがある想定。
+
+自身の環境にクローン先のフォルダの用意をし、用意したフォルダ配下でコマンドを実行。
+
+&nbsp;  
 
 ```bash
 git clone git@github.com:OzasaHitomi/helpdesk-BE.git
@@ -279,11 +284,13 @@ git clone git@github.com:OzasaHitomi/helpdesk-BE.git
 ### 2.2 poetry設定
 
 ```bash
-# Poetryインストール（入っていない場合）
-# homebrewからinstallする場合の例
+# Poetryインストール（自身の環境にpoetryが入っていない場合インストールする）
+# homebrewからpoetryをインストールする場合の例
 brew install poetry
+```
 
-# 依存ライブラリ
+```bash
+# poetry.lock（依存関係が固定されたファイル）から、その正確なバージョンに従って、Pythonプロジェクトにおける必要なライブラリの一括インストールと仮想環境の構築を同時に行う
 poetry install
 ```
 &nbsp;  
@@ -291,7 +298,9 @@ poetry install
 &nbsp;  
 ### 2.3 環境変数
 
-`.env.example` を参考に、.envファイルをルートディレクトリに作成し必要な値を設定する。
+`.env.example` を参考に、以下のファイルをルートディレクトリに作成し必要な値を設定する。
+* .envファイル(開発環境設定)
+* .env.test.unit(テスト環境設定)
 
 &nbsp;  
 
@@ -309,23 +318,19 @@ docker compose -f docker-compose.test.yml up -d
 &nbsp;  
 ---
 &nbsp;  
-### 2.5 動作確認URL
 
-* 開発環境
-```
-http://localhost:8000
-```
+### 2.5 動作確認Swaggerの表示
+
+ブラウザでURLを入力し、遷移先でSwagger UIが表示されれば、正常に起動しています。
 
 * 開発環境のSwagger
+
 ```
 http://localhost:8000/docs
 ```
-* テスト環境
-```
-http://localhost:8001
-```
 
 * テスト環境のSwagger
+
 ```
 http://localhost:8001/docs
 ```
