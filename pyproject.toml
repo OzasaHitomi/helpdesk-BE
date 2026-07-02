@@ -1,0 +1,39 @@
+[project]
+name = "helpdesk-be"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "hitomi.ozasa",email = "hitomi.ozasa@novel.jpn.com"}
+]
+readme = "README.md"
+requires-python = ">=3.14"
+
+
+dependencies = [
+    "fastapi[all] (>=0.138.2,<0.139.0)",
+    "sqlalchemy (>=2.0.51,<3.0.0)",
+    "alembic (>=1.18.5,<2.0.0)",
+    "mysqlclient (>=2.2.8,<3.0.0)"
+]
+
+[dependency-groups]
+dev = [
+    "pytest (>=9.1.1,<10.0.0)",
+    "ruff (>=0.15.20,<0.16.0)",
+    "python-dotenv (>=1.2.2,<2.0.0)"
+]
+
+
+[tool.poetry]
+packages = [{include = "helpdesk_be", from = "src"}]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "."]
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"
+
+
