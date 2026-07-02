@@ -18,7 +18,8 @@
       - [2.5.1.1 ローカルPC上の仮想環境に入る](#2511-ローカルpc上の仮想環境に入る)
       - [2.5.1.2 仮想環境を有効化する](#2512-仮想環境を有効化する)
       - [2.5.1.3 Pythonを実行する](#2513-pythonを実行する)
-    - [2.5.2 仮想環境を有効化せずに実行する](#252-仮想環境を有効化せずに実行する)
+    - [2.5.2 仮想環境を終了する](#252-仮想環境を終了する)
+    - [2.5.3 仮想環境を有効化せずに実行する](#253-仮想環境を有効化せずに実行する)
   - [2.6 動作確認Swaggerの表示](#26-動作確認swaggerの表示)
 - [3. ブランチ運用ルール](#3-ブランチ運用ルール)
   - [3.1 ブランチの概要](#31-ブランチの概要)
@@ -208,15 +209,7 @@ poetry env activate
 ※ パスは環境によって異なるため、以下は一例。
 
 ```bash
-source /Users/hitomi/project/.venv/bin/activate
-```
-
-有効化に成功すると、ターミナルの先頭に `(.venv)` が表示される。
-
-例
-
-```bash
-(.venv) $
+source /Users/username/project/.venv/bin/activate
 ```
 
 &nbsp;
@@ -233,13 +226,19 @@ python の後ろには実行したいPythonファイルのパスを指定する�
 python app/main.py
 ```
 
-```bash
-pip list
-```
-
 &nbsp;
 
-#### 2.5.2 仮想環境を有効化せずに実行する
+#### 2.5.2 仮想環境を終了する
+
+有効化した仮想環境を終了し、ローカルPCのPython環境に戻る。
+
+```bash
+deactivate
+```
+
+&nbsp;  
+
+#### 2.5.3 仮想環境を有効化せずに実行する
 
 仮想環境を有効化しなくても、コマンドの先頭に`poetry run` を付けることで、Poetryが自動的に仮想環境を使用してコマンドを実行する。
 
@@ -255,9 +254,6 @@ poetry run python app/main.py
 poetry run pytest
 ```
 
-```bash
-poetry run uvicorn app.main:app --reload
-```
 
 &nbsp;  
 ---
