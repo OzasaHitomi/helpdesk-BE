@@ -279,6 +279,123 @@ http://localhost:8001/docs
 
 &nbsp;  
 
+&nbsp;  
+---
+&nbsp;  
+
+# 3. Ruffの使用方法
+
+Ruffは、コードの静的解析（Linter）とコード整形（Formatter）を行うツールです。
+
+本プロジェクトでは、CLIからの実行と、VSCodeでの自動実行の両方に対応しています。
+
+&nbsp;
+
+### 3.1 CLIから実行する
+
+#### 3.1.1 仮想環境を有効化する
+
+##### 3.1.1.1 ローカルPC上の仮想環境に入る
+
+PythonをローカルPC上の仮想環境で実行するために、`pyproject.toml` があるプロジェクトルートで以下のコマンドを実行する。
+
+```bash
+poetry env activate
+```
+
+&nbsp;
+
+##### 3.1.1.2 仮想環境を有効化する
+
+`poetry env activate` を実行すると、仮想環境を有効化するためのコマンドが表示される。
+
+表示された `source .../activate` を実行する。
+
+※ パスは環境によって異なるため、以下は一例。
+
+```bash
+source /Users/username/project/.venv/bin/activate
+```
+
+&nbsp;
+
+#### 3.1.2 Linterを実行する
+
+コードの構文エラーや未使用のimport、コーディング規約違反などをチェックする。
+エラーが表示された場合は、3.1.3で自動修正するか、内容を確認して手動で修正する。
+
+```bash
+make lint
+```
+
+&nbsp;
+
+#### 3.1.3 Lintエラーを自動修正する
+
+自動修正可能なLintエラーを一括修正する。
+
+```bash
+make lint-fix
+```
+
+&nbsp;
+
+#### 3.1.4 Formatterを実行する
+
+コードをプロジェクトのフォーマットルールに従って自動整形する。
+
+```bash
+make format
+```
+
+&nbsp;
+
+#### 3.1.5 LintとFormatをまとめて実行する
+
+LintチェックとFormatを続けて実行する。
+
+```bash
+make check
+```
+
+&nbsp;
+
+#### 3.1.6 仮想環境を終了する
+
+有効化した仮想環境を終了し、ローカルPCのPython環境に戻る。
+
+```bash
+deactivate
+```
+
+&nbsp;
+
+### 3.2 VSCodeで使用する
+
+VSCodeでは、保存時にRuffによるコード整形や、自動修正可能なLintエラーの修正を行う。
+
+以下の拡張機能をインストールしておく。
+
+* Python（Microsoft）
+* Ruff（charliermarsh）
+
+保存時の動作
+
+* コードを自動整形する
+* 自動修正可能なLintエラーを修正する
+* import文を自動で整理する
+
+※ `.vscode/settings.json` に設定が含まれているため、拡張機能をインストールすれば追加設定は不要。
+
+&nbsp;
+
+### 3.3 Lintエラーを修正する
+
+`make lint` を実行してエラーが表示された場合は、内容を確認して修正する。
+
+自動修正可能な項目については、`make lint-fix` を実行するか、VSCodeでファイルを保存することで修正される。
+
+&nbsp;
 
 ## 3. ブランチ運用ルール
 
