@@ -8,6 +8,11 @@ lint:
 lint-fix:
 	ruff check . --fix
 
+# フォーマット違反を検出（修正はしない）
+.PHONY: format-check
+format-check:
+	ruff format . --check
+
 # コードをフォーマット
 .PHONY: format
 format:
