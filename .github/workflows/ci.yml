@@ -39,8 +39,15 @@ jobs:
 
       # Poetryをインストール
       - name: Install Poetry
-        run: |
-          pip install poetry==2.3.3
+        # PoetryをインストールするためだけのGitHub Action
+        # pip install poetry と違い、Poetryのインストール方法や設定までまとめて管理してくれる
+        uses: snok/install-poetry@v1
+        with:
+            version: 2.3.3
+            # # CIでも仮想環境を作成して依存関係を分離するため。
+            # virtualenvs-create: true
+            # # インストール時間を短縮でき、通常デメリットがほぼないため。
+            # installer-parallel: true
 
       # Poetryが作成した仮想環境を利用
       - name: Install dependencies
@@ -56,6 +63,12 @@ jobs:
       - name: Run Ruff Format Check
         run: |
           make format-check
+
+      - name: Create .env.test.unit
+        run: |
+            cat << EOF > .env.test.unit
+            ${{ secrets.ENV_TEST_UNIT }}
+            EOF
 
       # pytest実行
       - name: Run Tests
