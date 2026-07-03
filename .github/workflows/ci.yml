@@ -64,6 +64,8 @@ jobs:
         run: |
           make format-check
 
+      # GitHub Secretsに登録した内容から.env.test.unitファイルを生成
+      # （テスト実行に必要な環境変数をリポジトリに含めず、Secretsで安全に管理するため）
       - name: Create .env.test.unit
         run: |
             cat << EOF > .env.test.unit
