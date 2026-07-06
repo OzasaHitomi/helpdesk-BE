@@ -1,0 +1,83 @@
+# ワークフロー（CI）の名前
+name: Backend CI
+
+# いつ実行するか
+on:
+  # develop・作業ブランチへpushされた時
+  # （developへのpushはPRマージ時、feature/fix/docs/hotfixへのpushはPR作成前の早期チェック用）
+  push:
+    branches:
+      - develop
+      - "feature/**"
+      - "fix/**"
+      - "docs/**"
+      - "hotfix/**"
+
+  # developブランチへのPull Request作成・更新時
+  pull_request:
+    branches:
+      - develop
+
+# 実行する処理
+jobs:
+  backend-ci:
+
+    # GitHubが用意しているUbuntu環境で実行
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # リポジトリのソースコードを取得
+      - name: Checkout source code
+        uses: actions/checkout@v4
+
+      # Pythonをインストール
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # Poetryをインストール
+      - name: Install Poetry
+        # PoetryをインストールするためだけのGitHub Action
+        # pip install poetry と違い、Poetryのインストール方法や設定までまとめて管理してくれる
+        uses: snok/install-poetry@v1
+        with:
+            version: 2.3.3
+            # # CIでも仮想環境を作成して依存関係を分離するため。
+            # virtualenvs-create: true
+            # # インストール時間を短縮でき、通常デメリットがほぼないため。
+            # installer-parallel: true
+
+      # Poetryが作成した仮想環境を利用
+      - name: Install dependencies
+        run: |
+          poetry install
+
+      # RuffでLintチェック
+      - name: Run Ruff Lint
+        run: |
+          make lint
+
+      # Ruff Formatterでフォーマットチェック
+      - name: Run Ruff Format Check
+        run: |
+          make format-check
+
+      # GitHub Secretsに登録した内容から.env.test.unitファイルを生成
+      # （テスト実行に必要な環境変数をリポジトリに含めず、Secretsで安全に管理するため）
+      # - name: Create .env.test.unit
+      #   run: |
+      #       cat << EOF > .env.test.unit
+      #       ${{ secrets.ENV_TEST_UNIT }}
+      #       EOF
+
+      # .env.ciを.env.test.unitとしてコピー
+      - name: Create .env.test.unit
+        run: |
+            cp .env.ci .env.test.unit
+
+      # pytest実行
+      - name: Run Tests
+        run: |
+          poetry run pytest
