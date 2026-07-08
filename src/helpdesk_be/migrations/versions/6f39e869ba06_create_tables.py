@@ -6,17 +6,31 @@ Create Date: 2026-07-08 02:37:54.767134
 
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "6f39e869ba06"
-down_revision: Union[str, Sequence[str], None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | Sequence[str] | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
+
+# 9~19 lint前↓
+# from typing import Sequence, Union
+
+# from alembic import op
+# import sqlalchemy as sa
+
+
+# # revision identifiers, used by Alembic.
+# revision: str = "6f39e869ba06"
+# down_revision: Union[str, Sequence[str], None] = None
+# branch_labels: Union[str, Sequence[str], None] = None
+# depends_on: Union[str, Sequence[str], None] = None
+# ↑ここまで
 
 
 def upgrade() -> None:
