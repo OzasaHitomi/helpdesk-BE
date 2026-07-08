@@ -120,6 +120,7 @@ helpdesk-BE/
 ├── pyproject.toml                # Pythonプロジェクト設定・依存関係定義
 ├── poetry.lock                   # 依存関係のバージョン固定ファイル
 ├── .env.example                  # 環境変数のサンプルファイル
+├── .env.ci                       # 環境変数ファイル（CI実行時の単体テスト用）
 └── README.md
 ```
 
