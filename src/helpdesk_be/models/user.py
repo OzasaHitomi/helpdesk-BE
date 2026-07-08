@@ -13,14 +13,15 @@ class User(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     # 255は氏名を格納するのに十分な長さとして採用している一般的な文字数
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    # 今回は50
+    name: Mapped[str] = mapped_column(String(50), nullable=False)
     # 255はRFC 5321で定められたメールアドレスの最大長(254文字)を格納できる長さ
     # index=Trueにより、ログイン時のメールアドレス検索を高速化するための一意インデックスを付与している
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     # 255はbcrypt等のハッシュ値(60文字程度)より十分に大きく、将来的なハッシュアルゴリズム変更にも対応できる長さ
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     role: Mapped[UserRoleType] = mapped_column(Enum(UserRoleType), nullable=False)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=get_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=get_now, onupdate=get_now
