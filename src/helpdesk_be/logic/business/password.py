@@ -1,4 +1,4 @@
-def validate_password(v: str) -> str:
+def user_password(v: str) -> str:
     # 8文字未満はNG
     if len(v) < 8:
         raise ValueError("パスワードは8文字以上で入力してください")

@@ -1,6 +1,6 @@
 from pydantic import EmailStr, field_validator
 
-from helpdesk_be.logic.validate.validate_password import validate_password
+from helpdesk_be.logic.business.password import user_password
 from helpdesk_be.schemas.request.v1.base import BaseV1RequestSchema
 
 
@@ -14,4 +14,4 @@ class LoginRequest(BaseV1RequestSchema):
     password: str
 
     # logic/validate/validate_password.pyの関数をpasswordフィールドのバリデータとして登録
-    _validate_password = field_validator("password")(validate_password)
+    _validate_password = field_validator("password")(user_password)

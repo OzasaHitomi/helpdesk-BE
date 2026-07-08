@@ -1,8 +1,8 @@
-"""create tables
+"""create users
 
-Revision ID: 6f39e869ba06
+Revision ID: 1bd06de28a2b
 Revises:
-Create Date: 2026-07-08 02:37:54.767134
+Create Date: 2026-07-08 07:17:17.212255
 
 """
 
@@ -13,24 +13,10 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "6f39e869ba06"
+revision: str = "1bd06de28a2b"
 down_revision: str | Sequence[str] | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
-
-# 9~19 lint前↓
-# from typing import Sequence, Union
-
-# from alembic import op
-# import sqlalchemy as sa
-
-
-# # revision identifiers, used by Alembic.
-# revision: str = "6f39e869ba06"
-# down_revision: Union[str, Sequence[str], None] = None
-# branch_labels: Union[str, Sequence[str], None] = None
-# depends_on: Union[str, Sequence[str], None] = None
-# ↑ここまで
 
 
 def upgrade() -> None:
@@ -39,10 +25,12 @@ def upgrade() -> None:
     op.create_table(
         "users",
         sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("name", sa.String(length=255), nullable=False),
+        sa.Column("name", sa.String(length=50), nullable=False),
         sa.Column("email", sa.String(length=255), nullable=False),
         sa.Column("password_hash", sa.String(length=255), nullable=False),
-        sa.Column("role", sa.Enum("EMPLOYEE", "SUPPORT", name="userroletype"), nullable=False),
+        sa.Column(
+            "role", sa.Enum("EMPLOYEE", "SUPPORT", "ADMIN", name="userroletype"), nullable=False
+        ),
         sa.Column("is_active", sa.Boolean(), nullable=False),
         sa.Column("created_at", sa.DateTime(), nullable=False),
         sa.Column("updated_at", sa.DateTime(), nullable=False),
