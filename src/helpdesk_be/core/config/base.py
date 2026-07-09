@@ -17,6 +17,8 @@ class CoreSettings(BaseSettings):
     jwt_secret_key: str = "changeme"
     # 署名アルゴリズム。HS256（共通鍵方式）
     jwt_algorithm: str = "HS256"
+    # アクセストークンの有効期限（分）
+    jwt_expire_minutes: int = 60
 
     @property
     def database_url(self) -> str:

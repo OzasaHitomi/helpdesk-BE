@@ -2,7 +2,7 @@ from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 
-class BaseV1RequestSchema(BaseModel):
+class BaseV1ResponseSchema(BaseModel):
     model_config = ConfigDict(
         # キャメルケースを許可＆
         # BEのスネークケースのものとキャメルケースを比較・紐付け
