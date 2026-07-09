@@ -12,6 +12,12 @@ class CoreSettings(BaseSettings):
     mysql_password: str = "pass"
     front_end_url: str = "http://localhost:5173"
 
+    # JWTの署名・検証に使う秘密鍵。第三者に推測されないよう、.envで必ず上書きする
+    # （openssl rand -hex 32 などで生成したランダムな文字列を使う）
+    jwt_secret_key: str = "changeme"
+    # 署名アルゴリズム。HS256（共通鍵方式）
+    jwt_algorithm: str = "HS256"
+
     @property
     def database_url(self) -> str:
         return (
