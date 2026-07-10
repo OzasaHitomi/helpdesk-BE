@@ -25,6 +25,24 @@ jobs:
     # GitHubが用意しているUbuntu環境で実行
     runs-on: ubuntu-latest
 
+    # テストで使用するMySQLコンテナ（.env.ciの接続設定と一致させる）
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_DATABASE: helpdesk
+          MYSQL_ROOT_PASSWORD: password
+          MYSQL_USER: user
+          MYSQL_PASSWORD: pass
+        ports:
+          - 3307:3306
+        # ヘルスチェックが通るまでジョブのステップ開始を待機してくれる
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
 
       # リポジトリのソースコードを取得

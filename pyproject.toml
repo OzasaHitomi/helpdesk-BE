@@ -14,7 +14,9 @@ dependencies = [
     "sqlalchemy (>=2.0.51,<3.0.0)",
     "alembic (>=1.18.5,<2.0.0)",
     "mysqlclient (>=2.2.8,<3.0.0)",
-    "pydantic-settings (>=2.14.2,<3.0.0)"
+    "bcrypt (>=5.0.0,<6.0.0)",
+    "pydantic-settings (>=2.14.2,<3.0.0)",
+    "pyjwt (>=2.13.0,<3.0.0)"
 ]
 
 [dependency-groups]
@@ -22,7 +24,8 @@ dev = [
     "pytest (>=9.1.1,<10.0.0)",
     "ruff (>=0.15.20,<0.16.0)",
     "python-dotenv (>=1.2.2,<2.0.0)",
-    "freezegun (>=1.5.5,<2.0.0)"
+    "freezegun (>=1.5.5,<2.0.0)",
+    "httpx2 (>=2.5.0,<3.0.0)"
 ]
 
 

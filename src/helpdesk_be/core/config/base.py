@@ -12,6 +12,14 @@ class CoreSettings(BaseSettings):
     mysql_password: str = "pass"
     front_end_url: str = "http://localhost:5173"
 
+    # JWTの署名・検証に使う秘密鍵。認証の根幹となる値のため初期値を持たせず、
+    # .envで未設定の場合は起動時にエラーとする（openssl rand -hex 32 などで生成したランダムな文字列を使う）
+    jwt_secret_key: str
+    # 署名アルゴリズム。HS256（共通鍵方式）
+    jwt_algorithm: str = "HS256"
+    # アクセストークンの有効期限（分）。1日 = 1440分
+    jwt_expire_minutes: int = 1440
+
     @property
     def database_url(self) -> str:
         return (
@@ -26,4 +34,4 @@ class CoreSettings(BaseSettings):
     model_config = {"env_file": ".env", "extra": "ignore"}
 
 
-core_settings = CoreSettings()
+core_settings = CoreSettings()  # type: ignore[call-arg]
