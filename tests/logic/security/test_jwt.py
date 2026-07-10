@@ -27,11 +27,10 @@ from helpdesk_be.store.enum.user_role_type import UserRoleType
 # ============================================================
 
 
-# 正常系のテスト（payloadの内容・有効期限(exp)・署名鍵が正しくJWTにエンコードされる）
+# 正常系のテスト（payloadの内容・有効期限(exp)が正しくJWTにエンコードされる）
 # 確認内容:
 # - payloadの内容（sub, role）がそのままエンコードされる
 # - exp（有効期限）が「現在時刻 + jwt_expire_minutes」の値で設定される
-# - core_settings.jwt_secret_keyで署名される（異なる秘密鍵でデコードするとInvalidSignatureError）
 @freeze_time("2026-05-01 12:00:00+00:00")
 def test_create_access_token_encodes_payload_expiration_and_signature() -> None:
     payload = AccessTokenPayload(sub="1", role=UserRoleType.EMPLOYEE)
@@ -50,13 +49,16 @@ def test_create_access_token_encodes_payload_expiration_and_signature() -> None:
     expected_exp += core_settings.jwt_expire_minutes * 60
     assert decoded["exp"] == expected_exp
 
-    # core_settings.jwt_secret_keyで署名されていること
-    with pytest.raises(pyjwt.InvalidSignatureError):
-        pyjwt.decode(
-            token,
-            "other-secret-key-with-enough-length-for-hs256",
-            algorithms=[core_settings.jwt_algorithm],
-        )
+    # 以下は「tokenがcore_settings.jwt_secret_key以外の鍵では検証できない
+    # （＝jwt_secret_keyで正しく署名されている）」ことを確認しようとしていたテスト。
+    # 補足: 別鍵でデコードするとInvalidSignatureErrorになること自体は
+    # test_verify_access_token_raises_when_signature_invalidで担保できているためコメントアウト
+    # with pytest.raises(pyjwt.InvalidSignatureError):
+    #     pyjwt.decode(
+    #         token,
+    #         "other-secret-key-with-enough-length-for-hs256",
+    #         algorithms=[core_settings.jwt_algorithm],
+    #     )
 
 
 # ============================================================

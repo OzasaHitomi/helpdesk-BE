@@ -14,10 +14,6 @@ from helpdesk_be.schemas.request.v1.auth import LoginRequest
 
 router = APIRouter()
 
-# メール未登録／パスワード不一致のどちらでも同じメッセージにし、
-# レスポンス差異からメールアドレスの存在を推測されないようにする
-INVALID_CREDENTIALS_MESSAGE = "メールアドレスまたはパスワードが正しくありません"
-
 
 @router.post("", status_code=status.HTTP_204_NO_CONTENT)
 def login(
@@ -31,7 +27,7 @@ def login(
     # ユーザーが存在しない場合とパスワード不一致の場合は同じエラーを返す（不正アクセス防止のため）。
     # user is Noneを先に評価することで、Noneの場合はverify_passwordを実行しない（短絡評価）
     if user is None or not verify_password(body.password, user.password_hash):
-        raise UnauthorizedException(INVALID_CREDENTIALS_MESSAGE)
+        raise UnauthorizedException("メールアドレスまたはパスワードが正しくありません")
 
     # 利用可能なユーザーか確認する。
     # パスワード照合より前にこの確認を行うと、「利用不可」というレスポンス差異から
