@@ -1,17 +1,16 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from helpdesk_be.core.config.base import core_settings
 from helpdesk_be.core.dependencies.database import get_db
 from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.unauthorized_exception import UnauthorizedException
-from helpdesk_be.logic.security.jwt import create_access_token
+from helpdesk_be.logic.security.jwt import AccessTokenPayload, create_access_token
 from helpdesk_be.logic.security.password import verify_password
-from helpdesk_be.repositories.user_repository import get_user_by_email
+from helpdesk_be.repositories.user import get_user_by_email
 from helpdesk_be.schemas.request.v1.auth import LoginRequest
-from helpdesk_be.schemas.response.v1.auth import LoginResponse
 
 router = APIRouter()
 
@@ -20,21 +19,18 @@ router = APIRouter()
 INVALID_CREDENTIALS_MESSAGE = "メールアドレスまたはパスワードが正しくありません"
 
 
-@router.post("", response_model=LoginResponse)
+@router.post("", status_code=status.HTTP_204_NO_CONTENT)
 def login(
     body: LoginRequest,
     response: Response,
     session: Annotated[Session, Depends(get_db)],
-) -> LoginResponse:
+) -> None:
     # ユーザーを検索する(emailの一致)
     user = get_user_by_email(session, body.email)
 
-    # ユーザーが存在しない場合も、パスワード不一致時と同じエラーを返す
-    if user is None:
-        raise UnauthorizedException(INVALID_CREDENTIALS_MESSAGE)
-
-    # パスワードを照合する（不正アクセス防止のため）
-    if not verify_password(body.password, user.password_hash):
+    # ユーザーが存在しない場合とパスワード不一致の場合は同じエラーを返す（不正アクセス防止のため）。
+    # user is Noneを先に評価することで、Noneの場合はverify_passwordを実行しない（短絡評価）
+    if user is None or not verify_password(body.password, user.password_hash):
         raise UnauthorizedException(INVALID_CREDENTIALS_MESSAGE)
 
     # 利用可能なユーザーか確認する。
@@ -44,7 +40,7 @@ def login(
         raise ForbiddenException("このアカウントは現在ご利用いただけません")
 
     # JWTを生成する（ユーザーIDとロールをペイロードに含める）
-    access_token = create_access_token({"sub": str(user.id), "role": user.role.value})
+    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
 
     # Cookieの設定
     # httponly=TrueでJS経由のアクセスを防止、samesite=laxでCSRFのリスクを抑制
@@ -55,8 +51,9 @@ def login(
         httponly=True,
         samesite="lax",
         secure=False,
+        # Cookieの有効期限をJWTの有効期限と揃えるため、同じjwt_expire_minutesを使う
+        # （max_ageは秒指定のため、分の値を60倍して秒に変換している）
         max_age=core_settings.jwt_expire_minutes * 60,
     )
 
-    # レスポンスを返す
-    return LoginResponse(message="ログインに成功しました")
+    return None

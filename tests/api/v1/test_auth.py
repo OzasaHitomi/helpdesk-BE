@@ -10,7 +10,7 @@ from tests.factories.user_factory import create_user
 # リクエストの形式
 # POST はリクエストボディ（json=）でデータを送る:
 # レスポンスの形式
-# POST → 成功メッセージ＋Cookieにアクセストークンが設定される:
+# POST → 204 No Content（ボディなし）＋Cookieにアクセストークンが設定される:
 
 
 # 正常系のテストpost（ログイン成功）
@@ -23,10 +23,9 @@ def test_login_success(client: TestClient, db_session: Session) -> None:
         "/api/v1/auth",
         json={"email": "taro@example.com", "password": "Password1"},
     )
-    assert response.status_code == 200
-
-    data = response.json()
-    assert data["message"] == "ログインに成功しました"
+    assert response.status_code == 204
+    # 204はボディなしのはずなので、レスポンスボディ(bytes)が空であることを確認する
+    assert response.content == b""
 
     # Cookieにアクセストークンが設定され、payloadにユーザーIDとroleが含まれていること
     access_token = response.cookies.get("access_token")
