@@ -27,11 +27,13 @@ from helpdesk_be.store.enum.user_role_type import UserRoleType
 # ============================================================
 
 
-# 正常系のテスト（payloadの内容と有効期限(exp)が正しくJWTにエンコードされる）
+# 正常系のテスト（payloadの内容・有効期限(exp)・署名鍵が正しくJWTにエンコードされる）
+# 確認内容:
+# - payloadの内容（sub, role）がそのままエンコードされる
+# - exp（有効期限）が「現在時刻 + jwt_expire_minutes」の値で設定される
+# - core_settings.jwt_secret_keyで署名される（異なる秘密鍵でデコードするとInvalidSignatureError）
 @freeze_time("2026-05-01 12:00:00+00:00")
-def test_create_access_token_encodes_payload_and_expiration() -> None:
-    # 生成したトークンをpyjwt.decodeで直接検証し、渡したpayloadの内容がそのままエンコードされ、
-    # exp（有効期限）が「現在時刻 + jwt_expire_minutes」の値で設定されていることを確認する
+def test_create_access_token_encodes_payload_expiration_and_signature() -> None:
     payload = AccessTokenPayload(sub="1", role=UserRoleType.EMPLOYEE)
 
     token = create_access_token(payload)
@@ -39,23 +41,16 @@ def test_create_access_token_encodes_payload_and_expiration() -> None:
         token, core_settings.jwt_secret_key, algorithms=[core_settings.jwt_algorithm]
     )
 
+    # payloadの内容がそのままエンコードされていること
     assert decoded["sub"] == "1"
     assert decoded["role"] == "employee"
 
+    # expが「現在時刻 + jwt_expire_minutes」の値で設定されていること
     expected_exp = int(datetime(2026, 5, 1, 12, 0, 0, tzinfo=UTC).timestamp())
     expected_exp += core_settings.jwt_expire_minutes * 60
     assert decoded["exp"] == expected_exp
 
-
-# ------------------------
-
-
-# 正常系のテスト（設定された秘密鍵で署名される）
-def test_create_access_token_signs_with_configured_secret() -> None:
-    # 設定と異なる秘密鍵でデコードするとjwt.InvalidSignatureErrorになることから、
-    # core_settings.jwt_secret_keyで署名されていることを確認する
-    token = create_access_token(AccessTokenPayload(sub="1", role=UserRoleType.EMPLOYEE))
-
+    # core_settings.jwt_secret_keyで署名されていること
     with pytest.raises(pyjwt.InvalidSignatureError):
         pyjwt.decode(
             token,
