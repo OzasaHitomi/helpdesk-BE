@@ -181,8 +181,12 @@ def test_me_success_for_active_admin_user(client: TestClient, db_session: Sessio
 
 # ------------------------
 
-# 準正常系・異常系のテストget
-# 認証エラーのパターン（Cookie無し／不正なトークン／期限切れ／利用停止中）はすべて401
+# 準正常系・異常系のテスト
+# 認証エラーのパターン（Cookie無し／不正なトークン／期限切れは401、利用停止中は403）
+#
+# これらはget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）を
+# GET /meというエンドポイント経由で再確認しているものであり、get_current_userを使う他のAPIを実装する際に
+# 同様の異常系テストを重複して用意する必要はない
 
 
 # Cookieが無い場合は401
