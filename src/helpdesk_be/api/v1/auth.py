@@ -65,4 +65,4 @@ def login(
 def get_me(user: Annotated[User, Depends(get_current_user)]) -> MeResponse:
     # get_current_userがCookieの検証・ユーザー取得・利用停止チェックまで済ませているため、
     # ここではユーザー情報をレスポンス用スキーマに詰めるだけでよい
-    return MeResponse(id=user.id, name=user.name, email=user.email, role=user.role)
+    return MeResponse(id=user.id, role=user.role)

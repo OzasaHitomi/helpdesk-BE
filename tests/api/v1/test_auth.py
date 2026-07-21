@@ -113,8 +113,9 @@ def test_login_with_inactive_user(client: TestClient, db_session: Session) -> No
 # リクエストの形式
 # GET → Cookieのaccess_token（ログインセッション）のみで認証する。リクエストボディは無し
 # レスポンスの形式
-# 200 → ログイン中のユーザー情報（id, name, email, role）
-# 401 → 未ログイン（Cookie無し／不正なトークン／期限切れ／利用停止中）
+# 200 → ログイン中のユーザー情報（id, role）
+# 401 → 未ログイン（Cookie無し／不正なトークン／期限切れ）
+# 403 → ログイン済みだが利用停止中
 
 
 # 正常系のテスト（社員ロールでログイン済みの場合、200でユーザー情報が返る）
@@ -133,8 +134,6 @@ def test_me_success_for_employee(client: TestClient, db_session: Session) -> Non
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == user.id
-    assert data["name"] == user.name
-    assert data["email"] == user.email
     assert data["role"] == user.role.value
 
 
@@ -228,15 +227,15 @@ def test_me_with_expired_token_returns_401(client: TestClient, db_session: Sessi
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code == 401
-    assert response.json()["detail"] == "ログインが必要です"
+    assert response.json()["detail"] == "セッションの有効期限が切れました。再度ログインしてください"
 
 
 # ------------------------
 
 
-# サポートロールでも利用停止中のユーザーの場合は401
+# サポートロールでも利用停止中のユーザーの場合は403
 # （ログインAPI自体は停止中ユーザーを弾くため、正規ログイン後にアカウントが停止された想定でトークンを直接発行する）
-def test_me_with_inactive_support_user_returns_401(client: TestClient, db_session: Session) -> None:
+def test_me_with_inactive_support_user_returns_403(client: TestClient, db_session: Session) -> None:
     user = create_user(
         db_session,
         name="高橋一郎",
@@ -249,5 +248,5 @@ def test_me_with_inactive_support_user_returns_401(client: TestClient, db_sessio
 
     response = client.get("/api/v1/auth/me")
 
-    assert response.status_code == 401
-    assert response.json()["detail"] == "ログインが必要です"
+    assert response.status_code == 403
+    assert response.json()["detail"] == "このアカウントは現在ご利用いただけません"
