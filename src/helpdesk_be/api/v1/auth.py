@@ -4,13 +4,16 @@ from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from helpdesk_be.core.config.base import core_settings
+from helpdesk_be.core.dependencies.auth import get_current_user
 from helpdesk_be.core.dependencies.database import get_db
 from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.unauthorized_exception import UnauthorizedException
 from helpdesk_be.logic.security.jwt import AccessTokenPayload, create_access_token
 from helpdesk_be.logic.security.password import verify_password
+from helpdesk_be.models.user import User
 from helpdesk_be.repositories.user import get_user_by_email
 from helpdesk_be.schemas.request.v1.auth import LoginRequest
+from helpdesk_be.schemas.response.v1.auth import MeResponse
 
 router = APIRouter()
 
@@ -53,3 +56,13 @@ def login(
     )
 
     return None
+
+
+# ------------------------------------------------------------------
+
+
+@router.get("/me")
+def get_me(user: Annotated[User, Depends(get_current_user)]) -> MeResponse:
+    # get_current_userがCookieの検証・ユーザー取得・利用停止チェックまで済ませているため、
+    # ここではユーザー情報をレスポンス用スキーマに詰めるだけでよい
+    return MeResponse(id=user.id, role=user.role)
