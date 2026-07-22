@@ -20,7 +20,7 @@ def client(db_session: Session) -> Generator[TestClient]:
     app.dependency_overrides[get_db] = override_get_db
 
     # クライアント作成
-    client = TestClient(app)
+    client = TestClient(app, base_url="http://testserver.example")
     yield client
     # ↓20行めの上書きする仕様をリセット
     app.dependency_overrides.clear()
