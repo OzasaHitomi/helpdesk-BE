@@ -254,3 +254,39 @@ def test_me_with_inactive_support_user_returns_403(client: TestClient, db_sessio
 
     assert response.status_code == 403
     assert response.json()["detail"] == "このアカウントは現在ご利用いただけません"
+
+
+# ====================================================================
+# POST /auth/logout
+# ====================================================================
+
+# リクエストの形式
+# POST → Cookieのaccess_token（ログインセッション）のみで認証する。リクエストボディは無し
+# レスポンスの形式
+# 204 → ログアウト成功（ボディなし）＋Cookieのアクセストークンが削除される
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# TestClientのホスト名（"testserver"）にはドットが無く、domainを省略すると
+# ログアウト時にCookieが正しく削除されないため、domainを明示的に合わせている
+def _set_login_cookie(client: TestClient, access_token: str) -> None:
+    host = client.base_url.host
+    domain = host if "." in host else f"{host}.local"
+    client.cookies.set("access_token", access_token, domain=domain)
+
+
+# 正常系のテスト（ログイン中にログアウトすると204が返り、Cookieのaccess_tokenが削除される）
+def test_logout_success(client: TestClient, db_session: Session) -> None:
+    user = create_user(db_session, email="taro@example.com")
+    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
+    _set_login_cookie(client, access_token)
+
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert response.content == b""
+
+    # ログアウトのSet-CookieレスポンスによってクライアントのCookieジャーからも
+    # access_tokenが削除されていること（/meへのGETは行わず、Cookieの状態のみで確認する）
+    assert client.cookies.get("access_token") is None

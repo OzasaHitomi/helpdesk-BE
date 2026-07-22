@@ -66,3 +66,25 @@ def get_me(user: Annotated[User, Depends(get_current_user)]) -> MeResponse:
     # get_current_userがCookieの検証・ユーザー取得・利用停止チェックまで済ませているため、
     # ここではユーザー情報をレスポンス用スキーマに詰めるだけでよい
     return MeResponse(id=user.id, role=user.role)
+
+
+# ------------------------------------------------------------------
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout(
+    response: Response,
+    user: Annotated[User, Depends(get_current_user)],
+) -> None:
+    # get_current_userを通すことで、未ログイン状態での呼び出しは自動的に401になる
+    # （userの値自体はここでは使わず、認証チェックの目的でのみ利用）
+
+    # Cookieを削除する。loginのset_cookie（同ファイル内）とkey/httponly/samesite/secureを
+    # 揃えないとブラウザ側で正しく削除されないため注意
+    response.delete_cookie(
+        key="access_token",
+        httponly=True,
+        samesite="lax",
+        secure=False,  # 本番はTrueに変更
+    )
+    return None
