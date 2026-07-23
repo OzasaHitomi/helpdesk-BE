@@ -6,13 +6,10 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from helpdesk_be.core.config.base import core_settings
-from helpdesk_be.logic.security.jwt import (
-    AccessTokenPayload,
-    create_access_token,
-    verify_access_token,
-)
+from helpdesk_be.logic.security.jwt import verify_access_token
 from helpdesk_be.logic.security.password import hash_password
 from helpdesk_be.store.enum.user_role_type import UserRoleType
+from tests.factories.auth_factory import create_user_and_login
 from tests.factories.user_factory import create_user
 
 # ====================================================================
@@ -120,14 +117,13 @@ def test_login_with_inactive_user(client: TestClient, db_session: Session) -> No
 
 # 正常系のテスト（社員ロールでログイン済みの場合、200でユーザー情報が返る）
 def test_me_success_for_employee(client: TestClient, db_session: Session) -> None:
-    user = create_user(
+    user = create_user_and_login(
         db_session,
+        client,
         name="山田太郎",
         email="taro@example.com",
         role=UserRoleType.EMPLOYEE,
     )
-    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
-    client.cookies.set("access_token", access_token)
 
     response = client.get("/api/v1/auth/me")
 
@@ -142,15 +138,14 @@ def test_me_success_for_employee(client: TestClient, db_session: Session) -> Non
 
 # 正常系のテスト（サポートロール・アクティブなユーザーの場合、roleがsupportとして返る）
 def test_me_success_for_active_support_user(client: TestClient, db_session: Session) -> None:
-    user = create_user(
+    create_user_and_login(
         db_session,
+        client,
         name="鈴木花子",
         email="hanako@example.com",
         role=UserRoleType.SUPPORT,
         is_active=True,
     )
-    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
-    client.cookies.set("access_token", access_token)
 
     response = client.get("/api/v1/auth/me")
 
@@ -163,15 +158,14 @@ def test_me_success_for_active_support_user(client: TestClient, db_session: Sess
 
 # 正常系のテスト（管理者ロール・アクティブなユーザーの場合、roleがadminとして返る）
 def test_me_success_for_active_admin_user(client: TestClient, db_session: Session) -> None:
-    user = create_user(
+    create_user_and_login(
         db_session,
+        client,
         name="佐藤次郎",
         email="jiro@example.com",
         role=UserRoleType.ADMIN,
         is_active=True,
     )
-    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
-    client.cookies.set("access_token", access_token)
 
     response = client.get("/api/v1/auth/me")
 
@@ -240,17 +234,42 @@ def test_me_with_expired_token_returns_401(client: TestClient, db_session: Sessi
 # サポートロールでも利用停止中のユーザーの場合は403
 # （ログインAPI自体は停止中ユーザーを弾くため、正規ログイン後にアカウントが停止された想定でトークンを直接発行する）
 def test_me_with_inactive_support_user_returns_403(client: TestClient, db_session: Session) -> None:
-    user = create_user(
+    create_user_and_login(
         db_session,
+        client,
         name="高橋一郎",
         email="ichiro@example.com",
         role=UserRoleType.SUPPORT,
         is_active=False,
     )
-    access_token = create_access_token(AccessTokenPayload(sub=str(user.id), role=user.role))
-    client.cookies.set("access_token", access_token)
 
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code == 403
     assert response.json()["detail"] == "このアカウントは現在ご利用いただけません"
+
+
+# ====================================================================
+# POST /auth/logout
+# ====================================================================
+
+# リクエストの形式
+# POST → Cookieのaccess_token（ログインセッション）のみで認証する。リクエストボディは無し
+# レスポンスの形式
+# 204 → ログアウト成功（ボディなし）＋Cookieのアクセストークンが削除される
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 正常系のテスト（ログイン中にログアウトすると204が返り、Cookieのaccess_tokenが削除される）
+def test_logout_success(client: TestClient, db_session: Session) -> None:
+    create_user_and_login(db_session, client, email="taro@example.com")
+
+    response = client.post("/api/v1/auth/logout")
+    assert response.status_code == 204
+    assert response.content == b""
+
+    # ログアウトのSet-CookieレスポンスによってクライアントのCookieジャーからも
+    # access_tokenが削除されていること（/meへのGETは行わず、Cookieの状態のみで確認する）
+    assert client.cookies.get("access_token") is None
