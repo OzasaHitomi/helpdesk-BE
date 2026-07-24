@@ -119,6 +119,22 @@ def test_create_ticket_without_title_returns_422(client: TestClient, db_session:
     response = client.post("/api/v1/tickets", json={"detail": "詳細"})
 
     assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
+
+
+# ------------------------
+
+
+# titleが空文字列の場合も422
+def test_create_ticket_with_empty_title_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.post("/api/v1/tickets", json={"title": "", "detail": "詳細"})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
 
 
 # ------------------------
@@ -133,6 +149,7 @@ def test_create_ticket_with_blank_title_returns_422(
     response = client.post("/api/v1/tickets", json={"title": "   ", "detail": "詳細"})
 
     assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
 
 
 # ------------------------
@@ -145,6 +162,22 @@ def test_create_ticket_without_detail_returns_422(client: TestClient, db_session
     response = client.post("/api/v1/tickets", json={"title": "要件"})
 
     assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
+
+
+# ------------------------
+
+
+# detailが空文字列の場合も422
+def test_create_ticket_with_empty_detail_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.post("/api/v1/tickets", json={"title": "要件", "detail": ""})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
 
 
 # ------------------------
@@ -159,6 +192,7 @@ def test_create_ticket_with_blank_detail_returns_422(
     response = client.post("/api/v1/tickets", json={"title": "要件", "detail": "   "})
 
     assert response.status_code == 422
+    assert response.json()["detail"] == "空欄では登録できません"
 
 
 # ------------------------
