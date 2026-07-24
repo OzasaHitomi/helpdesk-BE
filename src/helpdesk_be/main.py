@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from helpdesk_be.api.router import router as api_router
 from helpdesk_be.core.config.base import core_settings
+from helpdesk_be.handlers.server_exception_handler import handler
 
 app = FastAPI()
 
@@ -17,3 +18,4 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.add_exception_handler(Exception, handler)
