@@ -42,4 +42,12 @@ def create_ticket(
         logger.error(f"failed to create ticket {e}")
         raise e
 
-    return CreateTicketResponse(id=new_ticket.id, title=new_ticket.title)
+    return CreateTicketResponse(
+        id=new_ticket.id,
+        title=new_ticket.title,
+        detail=new_ticket.detail,
+        visibility=new_ticket.visibility,
+        status=new_ticket.status,
+        created_by_user_id=new_ticket.created_by_user_id,
+        support_user_id=new_ticket.support_user_id,
+    )

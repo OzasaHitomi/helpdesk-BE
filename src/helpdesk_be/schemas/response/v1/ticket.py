@@ -1,10 +1,16 @@
 from helpdesk_be.schemas.response.v1.base import BaseV1ResponseSchema
+from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
+from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 
 
-# チケット新規作成APIのレスポンス。FEがトースター通知（「チケット：XXXが新規登録されました」）に
-# 使えるよう、登録されたチケットを特定できる項目のみを返す
-# id: 現時点では未使用だが、一覧上での新規チケットのハイライトや詳細画面へのリンク等、
-#     今後の実装で必要になる可能性が高いため残す
+# チケット新規作成APIのレスポンス。create系はcreated_at/updated_at以外は
+# フォームで入力・決定された内容として返却する方針
 class CreateTicketResponse(BaseV1ResponseSchema):
     id: int
     title: str
+    detail: str
+    visibility: TicketVisibilityType
+    status: TicketStatusType
+    created_by_user_id: int
+    # 作成時点では未担当のためNone
+    support_user_id: int | None

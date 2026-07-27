@@ -12,7 +12,7 @@ from tests.factories.auth_factory import create_user_and_login
 # ====================================================================
 
 # リクエストの形式
-# POST → リクエストボディ（json）でtitle/detail/visibility(任意)を送る
+# POST → リクエストボディ（json）でtitle/detail/visibility(すべて必須)を送る
 # レスポンスの形式
 # 201 → 登録成功（登録されたチケットのid/titleを返す）
 # 403 → 社員以外のロールでログイン中
@@ -50,27 +50,6 @@ def test_create_ticket_success(client: TestClient, db_session: Session) -> None:
 
 # ------------------------
 
-
-# 正常系のテスト（公開設定を省略した場合は非公開として保存される）
-def test_create_ticket_defaults_to_private_visibility(
-    client: TestClient, db_session: Session
-) -> None:
-    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
-
-    response = client.post(
-        "/api/v1/tickets",
-        json={"title": "要件", "detail": "詳細"},
-    )
-
-    assert response.status_code == 201
-    data = response.json()
-
-    ticket = db_session.execute(select(Ticket).where(Ticket.id == data["id"])).scalar_one()
-    assert ticket.visibility.value == "private"
-
-
-# ------------------------
-
 # 準正常系のテスト
 # 社員以外のロールでは登録処理を実行できない
 
@@ -83,7 +62,7 @@ def test_create_ticket_with_support_role_returns_403(
 
     response = client.post(
         "/api/v1/tickets",
-        json={"title": "要件", "detail": "詳細"},
+        json={"title": "要件", "detail": "詳細", "visibility": "public"},
     )
 
     assert response.status_code == 403
@@ -99,7 +78,7 @@ def test_create_ticket_with_admin_role_returns_403(client: TestClient, db_sessio
 
     response = client.post(
         "/api/v1/tickets",
-        json={"title": "要件", "detail": "詳細"},
+        json={"title": "要件", "detail": "詳細", "visibility": "public"},
     )
 
     assert response.status_code == 403
@@ -210,7 +189,7 @@ def test_create_ticket_with_commit_error(
 
     response = client_with_commit_error.post(
         "/api/v1/tickets",
-        json={"title": "要件", "detail": "詳細"},
+        json={"title": "要件", "detail": "詳細", "visibility": "public"},
     )
 
     assert response.status_code == 500
