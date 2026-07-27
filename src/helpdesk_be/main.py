@@ -1,8 +1,13 @@
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
 from helpdesk_be.api.router import router as api_router
 from helpdesk_be.core.config.base import core_settings
+from helpdesk_be.handlers.server_exception_handler import handler as server_exception_handler
+from helpdesk_be.handlers.validation_exception_handler import (
+    handler as validation_exception_handler,
+)
 
 app = FastAPI()
 
@@ -17,3 +22,5 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
+app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
+app.add_exception_handler(Exception, server_exception_handler)

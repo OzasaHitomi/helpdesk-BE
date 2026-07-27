@@ -37,6 +37,8 @@ def client_with_commit_error(db_session_commit_error: Session) -> Generator[Test
     app.dependency_overrides[get_db] = override_get_db
 
     # クライアント作成
-    client = TestClient(app, raise_server_exceptions=False)
+    # base_urlはclientフィクスチャと同じくドット入りホスト名にする必要がある
+    # （ドット無しの"testserver"だとCookieのdomain照合がずれ、ログイン中でも401になってしまう）
+    client = TestClient(app, base_url="http://testserver.example", raise_server_exceptions=False)
     yield client
     app.dependency_overrides.clear()
