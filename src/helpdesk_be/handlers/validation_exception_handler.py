@@ -11,9 +11,9 @@ def handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     # detailの作成
     detail = []
     for error in exc.errors():
-        item= ValidationErrorResponseItem(
-            loc = error["loc"],
-            type = error["type"],
+        item = ValidationErrorResponseItem(
+            loc=error["loc"],
+            type=error["type"],
         )
         # クラスをJsonにして配列の中に入れている
         detail.append(item.model_dump())

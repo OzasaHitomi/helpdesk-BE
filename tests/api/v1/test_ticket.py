@@ -95,10 +95,10 @@ def test_create_ticket_with_admin_role_returns_403(client: TestClient, db_sessio
 def test_create_ticket_without_title_returns_422(client: TestClient, db_session: Session) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"detail": "詳細"})
+    response = client.post("/api/v1/tickets", json={"detail": "詳細", "visibility": "public"})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "title"], "type": "missing"}]
 
 
 # ------------------------
@@ -110,10 +110,12 @@ def test_create_ticket_with_empty_title_returns_422(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"title": "", "detail": "詳細"})
+    response = client.post(
+        "/api/v1/tickets", json={"title": "", "detail": "詳細", "visibility": "public"}
+    )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "title"], "type": "string_too_short"}]
 
 
 # ------------------------
@@ -125,10 +127,12 @@ def test_create_ticket_with_blank_title_returns_422(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"title": "   ", "detail": "詳細"})
+    response = client.post(
+        "/api/v1/tickets", json={"title": "   ", "detail": "詳細", "visibility": "public"}
+    )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "title"], "type": "string_too_short"}]
 
 
 # ------------------------
@@ -138,10 +142,10 @@ def test_create_ticket_with_blank_title_returns_422(
 def test_create_ticket_without_detail_returns_422(client: TestClient, db_session: Session) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"title": "要件"})
+    response = client.post("/api/v1/tickets", json={"title": "要件", "visibility": "public"})
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "detail"], "type": "missing"}]
 
 
 # ------------------------
@@ -153,10 +157,12 @@ def test_create_ticket_with_empty_detail_returns_422(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"title": "要件", "detail": ""})
+    response = client.post(
+        "/api/v1/tickets", json={"title": "要件", "detail": "", "visibility": "public"}
+    )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "detail"], "type": "string_too_short"}]
 
 
 # ------------------------
@@ -168,10 +174,12 @@ def test_create_ticket_with_blank_detail_returns_422(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.post("/api/v1/tickets", json={"title": "要件", "detail": "   "})
+    response = client.post(
+        "/api/v1/tickets", json={"title": "要件", "detail": "   ", "visibility": "public"}
+    )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "空欄では登録できません"
+    assert response.json()["detail"] == [{"loc": ["body", "detail"], "type": "string_too_short"}]
 
 
 # ------------------------

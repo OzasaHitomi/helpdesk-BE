@@ -22,5 +22,5 @@ app.add_middleware(
 )
 
 app.include_router(api_router, prefix="/api")
-app.add_exception_handler(RequestValidationError, validation_exception_handler)# type: ignore[arg-type]
+app.add_exception_handler(RequestValidationError, validation_exception_handler)  # type: ignore[arg-type]
 app.add_exception_handler(Exception, server_exception_handler)
