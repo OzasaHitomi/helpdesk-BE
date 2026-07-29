@@ -47,13 +47,13 @@ def create_ticket(
         raise e
 
     return CreateTicketResponse(
+        id=new_ticket.id,
         title=new_ticket.title,
         detail=new_ticket.detail,
         visibility=new_ticket.visibility,
         status=new_ticket.status,
         created_by_user_id=new_ticket.created_by_user_id,
         support_user_id=new_ticket.support_user_id,
-        id=new_ticket.id,
     )
 
 
@@ -70,12 +70,12 @@ def list_tickets(
 
     return [
         GetTicketsResponseItem(
+            id=ticket.id,
             title=ticket.title,
             visibility=ticket.visibility,
             status=ticket.status,
             questioner_name=questioner.name,
             support_user_name=support_user.name if support_user else None,
-            id=ticket.id,
             created_at=ticket.created_at,
         )
         for ticket, questioner, support_user in rows
