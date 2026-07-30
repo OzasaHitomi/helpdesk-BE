@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
-from helpdesk_be.repositories.ticket import get_tickets_with_users
+from helpdesk_be.repositories.ticket import get_ticket_by_id, get_tickets_with_users
 from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 from tests.factories.ticket_factory import create_ticket
 from tests.factories.user_factory import create_user
@@ -114,3 +114,28 @@ def test_get_tickets_with_users_filters_private_tickets_of_other_users_when_user
 
     ticket_ids = {ticket.id for ticket in rows}
     assert ticket_ids == {own_private.id, other_public.id}
+
+
+# ====================================================================
+# get_ticket_by_id
+# ====================================================================
+
+
+def test_get_ticket_by_id_returns_ticket_when_exists(db_session: Session) -> None:
+    questioner = create_user(db_session)
+    ticket = create_ticket(db_session, created_by_user_id=questioner.id, title="対象の質問")
+
+    result = get_ticket_by_id(db_session, ticket.id)
+
+    assert result is not None
+    assert result.id == ticket.id
+    assert result.title == "対象の質問"
+
+
+# ---------------------------------------------------------------------------------------
+
+
+def test_get_ticket_by_id_returns_none_when_not_exists(db_session: Session) -> None:
+    result = get_ticket_by_id(db_session, 9999)
+
+    assert result is None
