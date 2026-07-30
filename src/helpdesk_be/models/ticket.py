@@ -1,10 +1,11 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, Enum, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from helpdesk_be.logic.calculate.calc_datetime import get_now
 from helpdesk_be.models.base import Base
+from helpdesk_be.models.user import User
 from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
 from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 
@@ -33,6 +34,9 @@ class Ticket(Base):
     support_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True, index=True
     )
+    # created_by_user_id/support_user_idはどちらもusers.idを参照するFKのため、foreign_keysで参照先を明示する
+    questioner: Mapped[User] = relationship(User, foreign_keys=[created_by_user_id])
+    support_user: Mapped[User | None] = relationship(User, foreign_keys=[support_user_id])
     created_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=get_now)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=get_now, onupdate=get_now
