@@ -9,7 +9,7 @@ from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.models.ticket import Ticket
 from helpdesk_be.models.user import User
-from helpdesk_be.repositories.ticket import get_tickets
+from helpdesk_be.repositories.ticket import get_tickets_with_users
 from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest
 from helpdesk_be.schemas.response.v1.ticket import (
     CreateTicketResponse,
@@ -64,9 +64,9 @@ def list_tickets(
 ) -> list[GetTicketsResponseItem]:
     # SUPPORT/ADMINは全件、それ以外(将来ロールが増えた場合も含む)は「公開 または 自分が質問者」のみ閲覧可(fail-closed)
     if user.role in (UserRoleType.SUPPORT, UserRoleType.ADMIN):
-        tickets = get_tickets(session)
+        tickets = get_tickets_with_users(session)
     else:
-        tickets = get_tickets(session, user_id=user.id)
+        tickets = get_tickets_with_users(session, visible_to_user_id=user.id)
 
     return [
         GetTicketsResponseItem(
