@@ -345,7 +345,7 @@ def test_list_tickets_with_admin_role_shows_all_tickets(
 
 # ------------------------
 
-# 質問者名・担当者名がJOIN結果としてレスポンスに含まれる
+# 質問者名・担当者名が先読み結果としてレスポンスに含まれる
 
 
 def test_list_tickets_includes_questioner_and_support_user_names(

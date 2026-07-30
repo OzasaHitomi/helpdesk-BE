@@ -20,7 +20,7 @@ class CreateTicketResponse(BaseV1ResponseSchema):
     support_user_id: int | None
 
 
-# チケット一覧APIの1件分のレスポンス。質問者・担当者はJOINで取得した名前のみを返す
+# チケット一覧APIの1件分のレスポンス。質問者・担当者は先読みで取得した名前のみを返す
 class GetTicketsResponseItem(BaseV1ResponseSchema):
     id: int
     title: str
