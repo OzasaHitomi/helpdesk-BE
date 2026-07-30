@@ -9,15 +9,19 @@ from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.models.ticket import Ticket
 from helpdesk_be.models.user import User
+from helpdesk_be.repositories.ticket import get_tickets_with_users
 from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest
-from helpdesk_be.schemas.response.v1.ticket import CreateTicketResponse
+from helpdesk_be.schemas.response.v1.ticket import (
+    CreateTicketResponse,
+    GetTicketsResponseItem,
+)
 from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 
 router = APIRouter()
 
 
-@router.post("", status_code=status.HTTP_201_CREATED)
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=CreateTicketResponse)
 def create_ticket(
     body: CreateTicketRequest,
     user: Annotated[User, Depends(get_current_user)],
@@ -51,3 +55,28 @@ def create_ticket(
         created_by_user_id=new_ticket.created_by_user_id,
         support_user_id=new_ticket.support_user_id,
     )
+
+
+@router.get("", response_model=list[GetTicketsResponseItem])
+def list_tickets(
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> list[GetTicketsResponseItem]:
+    # SUPPORT/ADMINは全件、それ以外(将来ロールが増えた場合も含む)は「公開 または 自分が質問者」のみ閲覧可(fail-closed)
+    if user.role in (UserRoleType.SUPPORT, UserRoleType.ADMIN):
+        tickets = get_tickets_with_users(session)
+    else:
+        tickets = get_tickets_with_users(session, visible_to_user_id=user.id)
+
+    return [
+        GetTicketsResponseItem(
+            id=ticket.id,
+            title=ticket.title,
+            visibility=ticket.visibility,
+            status=ticket.status,
+            questioner_name=ticket.questioner.name,
+            support_user_name=ticket.support_user.name if ticket.support_user else None,
+            created_at=ticket.created_at,
+        )
+        for ticket in tickets
+    ]
