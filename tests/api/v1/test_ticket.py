@@ -1,6 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -427,94 +429,54 @@ def test_get_ticket_returns_ticket_detail(client: TestClient, db_session: Sessio
 
 # ------------------------
 
-# 準正常系のテスト
-# 自分が質問者の非公開チケットは自分自身なら閲覧できる
+# 正常系・準正常系のテスト
+# 「誰が(ロール)・誰の(自分/他人)・どの公開設定の」チケットを閲覧できるか、という組み合わせを網羅する
+# 手順(ログイン→チケット作成→GET→200確認)は全ケース共通のため、parametrizeで値だけ差し替えて実行する
+# (レスポンス内容の詳細な検証はtest_get_ticket_returns_ticket_detailが担当し、ここでは閲覧可否のみ確認する)
 
 
-def test_get_ticket_with_own_private_ticket_returns_200(
-    client: TestClient, db_session: Session
+@pytest.mark.parametrize(
+    ("login_role", "is_own_ticket", "visibility"),
+    [
+        # 社員は自分の非公開チケットを閲覧できる
+        pytest.param(
+            UserRoleType.EMPLOYEE, True, TicketVisibilityType.PRIVATE, id="employee_own_private"
+        ),
+        # 社員は他人の公開チケットも閲覧できる
+        pytest.param(
+            UserRoleType.EMPLOYEE, False, TicketVisibilityType.PUBLIC, id="employee_others_public"
+        ),
+        # サポートロールは他人の非公開チケットも閲覧できる
+        pytest.param(
+            UserRoleType.SUPPORT, False, TicketVisibilityType.PRIVATE, id="support_others_private"
+        ),
+        # 管理者ロールも他人の非公開チケットを閲覧できる
+        pytest.param(
+            UserRoleType.ADMIN, False, TicketVisibilityType.PRIVATE, id="admin_others_private"
+        ),
+    ],
+)
+def test_get_ticket_returns_200_for_viewable_ticket(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+    is_own_ticket: bool,
+    visibility: TicketVisibilityType,
 ) -> None:
-    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    user = create_user_and_login(db_session, client, role=login_role)
+    # 「自分のチケットか」はログインユーザー作成後でないとidが決まらないため、boolで受けてここで分岐する
+    if is_own_ticket:
+        owner_id = user.id
+    else:
+        owner_id = create_user(db_session, name="他人", email="other@example.com").id
     ticket = create_ticket(
-        db_session,
-        created_by_user_id=user.id,
-        visibility=TicketVisibilityType.PRIVATE,
-        title="自分の非公開",
+        db_session, created_by_user_id=owner_id, visibility=visibility, title="対象チケット"
     )
 
     response = client.get(f"/api/v1/tickets/{ticket.id}")
 
     assert response.status_code == 200
-    assert response.json()["title"] == "自分の非公開"
-
-
-# ------------------------
-
-# 社員は他人の公開チケットも閲覧できる
-
-
-def test_get_ticket_with_other_users_public_ticket_returns_200(
-    client: TestClient, db_session: Session
-) -> None:
-    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
-    other = create_user(db_session, name="他人", email="other@example.com")
-    ticket = create_ticket(
-        db_session,
-        created_by_user_id=other.id,
-        visibility=TicketVisibilityType.PUBLIC,
-        title="他人の公開",
-    )
-
-    response = client.get(f"/api/v1/tickets/{ticket.id}")
-
-    assert response.status_code == 200
-    assert response.json()["title"] == "他人の公開"
-
-
-# ------------------------
-
-# サポートロールは他人の非公開チケットも閲覧できる
-
-
-def test_get_ticket_with_support_role_can_view_others_private_ticket(
-    client: TestClient, db_session: Session
-) -> None:
-    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
-    other = create_user(db_session, name="他人", email="other@example.com")
-    ticket = create_ticket(
-        db_session,
-        created_by_user_id=other.id,
-        visibility=TicketVisibilityType.PRIVATE,
-        title="他人の非公開",
-    )
-
-    response = client.get(f"/api/v1/tickets/{ticket.id}")
-
-    assert response.status_code == 200
-    assert response.json()["title"] == "他人の非公開"
-
-
-# ------------------------
-
-# 管理者ロールも他人の非公開チケットを閲覧できる
-
-
-def test_get_ticket_with_admin_role_can_view_others_private_ticket(
-    client: TestClient, db_session: Session
-) -> None:
-    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
-    other = create_user(db_session, name="他人", email="other@example.com")
-    ticket = create_ticket(
-        db_session,
-        created_by_user_id=other.id,
-        visibility=TicketVisibilityType.PRIVATE,
-        title="他人の非公開",
-    )
-
-    response = client.get(f"/api/v1/tickets/{ticket.id}")
-
-    assert response.status_code == 200
-    assert response.json()["title"] == "他人の非公開"
+    assert response.json()["title"] == "対象チケット"
 
 
 # ------------------------
