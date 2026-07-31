@@ -122,11 +122,12 @@ def test_get_tickets_with_users_filters_private_tickets_of_other_users_when_user
 
 
 def test_get_ticket_by_id_returns_ticket_when_exists(db_session: Session) -> None:
-    # 複数チケットが存在する中で、指定したIDのチケットのみが返ることを確認する
-    questioner = create_user(db_session)
-    ticket = create_ticket(db_session, created_by_user_id=questioner.id, title="対象の質問")
-    create_ticket(db_session, created_by_user_id=questioner.id, title="対象外の質問1")
-    create_ticket(db_session, created_by_user_id=questioner.id, title="対象外の質問2")
+    # 複数チケットが存在する中で、指定したIDのチケットのみが返ることを確認する(作成者違いも含む)
+    me = create_user(db_session, name="自分", email="me@example.com")
+    other = create_user(db_session, name="他人", email="other@example.com")
+    ticket = create_ticket(db_session, created_by_user_id=me.id, title="対象の質問")
+    create_ticket(db_session, created_by_user_id=me.id, title="対象外の質問1")
+    create_ticket(db_session, created_by_user_id=other.id, title="対象外の質問2")
 
     result = get_ticket_by_id(db_session, ticket.id)
 
@@ -139,10 +140,11 @@ def test_get_ticket_by_id_returns_ticket_when_exists(db_session: Session) -> Non
 
 
 def test_get_ticket_by_id_returns_none_when_not_exists(db_session: Session) -> None:
-    # 指定したIDのチケットが存在しない場合はNoneが返ることを確認する(他のチケットは存在する状態)
-    questioner = create_user(db_session)
-    create_ticket(db_session, created_by_user_id=questioner.id)
-    create_ticket(db_session, created_by_user_id=questioner.id)
+    # 指定したIDのチケットが存在しない場合はNoneが返ることを確認する(他人のチケットも含め他のチケットは存在する状態)
+    me = create_user(db_session, name="自分", email="me@example.com")
+    other = create_user(db_session, name="他人", email="other@example.com")
+    create_ticket(db_session, created_by_user_id=me.id)
+    create_ticket(db_session, created_by_user_id=other.id)
 
     result = get_ticket_by_id(db_session, 9999)
 
