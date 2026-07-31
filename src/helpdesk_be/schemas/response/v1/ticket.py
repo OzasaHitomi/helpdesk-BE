@@ -30,3 +30,14 @@ class GetTicketsResponseItem(BaseV1ResponseSchema):
     # 担当者が未割当ての場合はNone
     support_user_name: str | None
     created_at: datetime
+
+
+# チケット詳細APIのレスポンス。質問者・担当者名は現時点の画面要件に無いため含めない
+# (ステータス変更等で担当者情報が必要になった際に別タスクで検討する)
+class GetTicketResponse(BaseV1ResponseSchema):
+    id: int
+    title: str
+    detail: str
+    visibility: TicketVisibilityType
+    status: TicketStatusType
+    created_at: datetime

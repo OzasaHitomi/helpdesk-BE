@@ -3,7 +3,7 @@ from zoneinfo import ZoneInfo
 
 from sqlalchemy.orm import Session
 
-from helpdesk_be.repositories.ticket import get_tickets_with_users
+from helpdesk_be.repositories.ticket import get_ticket_by_id, get_tickets_with_users
 from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 from tests.factories.ticket_factory import create_ticket
 from tests.factories.user_factory import create_user
@@ -114,3 +114,38 @@ def test_get_tickets_with_users_filters_private_tickets_of_other_users_when_user
 
     ticket_ids = {ticket.id for ticket in rows}
     assert ticket_ids == {own_private.id, other_public.id}
+
+
+# ====================================================================
+# get_ticket_by_id
+# ====================================================================
+
+
+def test_get_ticket_by_id_returns_ticket_when_exists(db_session: Session) -> None:
+    # 複数チケットが存在する中で、指定したIDのチケットのみが返ることを確認する(作成者違いも含む)
+    me = create_user(db_session, name="自分", email="me@example.com")
+    other = create_user(db_session, name="他人", email="other@example.com")
+    ticket = create_ticket(db_session, created_by_user_id=me.id, title="対象の質問")
+    create_ticket(db_session, created_by_user_id=me.id, title="対象外の質問1")
+    create_ticket(db_session, created_by_user_id=other.id, title="対象外の質問2")
+
+    result = get_ticket_by_id(db_session, ticket.id)
+
+    assert result is not None
+    assert result.id == ticket.id
+    assert result.title == "対象の質問"
+
+
+# ---------------------------------------------------------------------------------------
+
+
+def test_get_ticket_by_id_returns_none_when_not_exists(db_session: Session) -> None:
+    # 指定したIDのチケットが存在しない場合はNoneが返ることを確認する(他人のチケットも含め他のチケットは存在する状態)
+    me = create_user(db_session, name="自分", email="me@example.com")
+    other = create_user(db_session, name="他人", email="other@example.com")
+    create_ticket(db_session, created_by_user_id=me.id)
+    create_ticket(db_session, created_by_user_id=other.id)
+
+    result = get_ticket_by_id(db_session, 9999)
+
+    assert result is None

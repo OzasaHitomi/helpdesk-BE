@@ -19,6 +19,6 @@ def handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         detail.append(item.model_dump())
 
     return JSONResponse(
-        status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
         content=ErrorResponse(detail=detail, type="VALIDATION_ERROR").model_dump(),
     )

@@ -1,6 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
+import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -386,3 +388,181 @@ def test_list_tickets_returns_null_support_user_name_when_unassigned(
 
     item = response.json()[0]
     assert item["supportUserName"] is None
+
+
+# ====================================================================
+# GET /tickets/{ticket_id}
+# ====================================================================
+
+# リクエストの形式
+# GET → パスパラメータでticket_idを指定する
+# レスポンスの形式
+# 200 → チケット詳細(id/title/detail/visibility/status/created_at)を返す
+# 404 → 対象のチケットが存在しない、または非公開チケットを閲覧権限のないユーザーが取得しようとした場合
+#       (権限がないことと存在しないことを区別させないため、いずれも404で統一する)
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+# ------------------
+
+# 公開チケットは誰でも閲覧可能
+# 社員A作成 -> 公開チケット作る
+# (P)社員B, サポータ, 管理者 -> チケット閲覧できる
+
+
+@pytest.mark.parametrize(
+    ("login_role"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, id="employee"),
+        pytest.param(UserRoleType.SUPPORT, id="support"),
+        pytest.param(UserRoleType.ADMIN, id="admin"),
+    ],
+)
+def test_get_ticket_with_public_ticket_is_viewable_by_any_role(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+) -> None:
+    # 社員Aの作成（ログインユーザーとは別人）
+    # ＆ 社員Aが公開チケットを作成する
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=creator.id,
+        visibility=TicketVisibilityType.PUBLIC,
+        title="公開チケット",
+    )
+    # parametrizeユーザーログイン
+    create_user_and_login(db_session, client, role=login_role)
+
+    # API叩く
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    # 確認
+    assert response.status_code == 200
+    assert response.json()["title"] == "公開チケット"
+
+
+# ------------------
+
+# 非公開のチケットはサポータ、管理者は閲覧可能
+# 社員A作成 -> 非公開チケット作る
+# (P)サポータ, 管理者 -> チケット閲覧できる
+
+
+@pytest.mark.parametrize(
+    ("login_role"),
+    [
+        pytest.param(UserRoleType.SUPPORT, id="support"),
+        pytest.param(UserRoleType.ADMIN, id="admin"),
+    ],
+)
+def test_get_ticket_with_private_ticket_is_viewable_by_support_or_admin(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+) -> None:
+    # 社員Aの作成（ログインユーザーとは別人）
+    # ＆ 社員Aが非公開チケットを作成する
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=creator.id,
+        visibility=TicketVisibilityType.PRIVATE,
+        title="非公開チケット",
+    )
+    # parametrizeユーザーログイン
+    create_user_and_login(db_session, client, role=login_role)
+
+    # API叩く
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    # 確認
+    assert response.status_code == 200
+    assert response.json()["title"] == "非公開チケット"
+
+
+# ------------------
+
+# 社員は自身の作成チケットであれば(公開条件に関わらず)閲覧可能
+# 社員A作成 -> (P)公開/非公開チケット作る
+# 社員A -> チケット閲覧できる
+
+
+@pytest.mark.parametrize(
+    ("visibility"),
+    [
+        pytest.param(TicketVisibilityType.PUBLIC, id="public"),
+        pytest.param(TicketVisibilityType.PRIVATE, id="private"),
+    ],
+)
+def test_get_ticket_with_own_ticket_is_viewable_by_employee_regardless_of_visibility(
+    client: TestClient,
+    db_session: Session,
+    visibility: TicketVisibilityType,
+) -> None:
+    # ログインユーザーが自身のチケットを作成する
+    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=user.id,
+        visibility=visibility,
+        title="自分のチケット",
+    )
+
+    # API叩く
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    # 確認
+    assert response.status_code == 200
+    assert response.json()["title"] == "自分のチケット"
+
+
+# ------------------------
+
+
+# 社員は他人の非公開チケットは閲覧不可
+# 社員A作成 -> 非公開チケット作る
+# 社員B -> チケット閲覧できない(404)
+
+
+def test_get_ticket_with_other_users_private_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    # 社員Aがチケットを作成する（ログインユーザーとは別人）
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=creator.id,
+        visibility=TicketVisibilityType.PRIVATE,
+        title="他人の非公開",
+    )
+    # 社員B(別ユーザー)としてログイン
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    # API叩く
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    # 確認
+    assert response.status_code == 404
+
+
+# ------------------
+
+# 異常系のテスト
+# 存在しない、または閲覧権限がないチケットは404になる
+
+
+# 存在しないIDを指定した場合は404
+def test_get_ticket_with_nonexistent_id_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    # ログイン
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    # 存在しないIDでAPI叩く
+    response = client.get("/api/v1/tickets/9999")
+
+    # 確認
+    assert response.status_code == 404
