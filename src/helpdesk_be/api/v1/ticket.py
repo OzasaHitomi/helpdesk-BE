@@ -10,16 +10,21 @@ from helpdesk_be.exceptions.not_found_exception import NotFoundException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.logic.business.ticket_permission import can_view_ticket
 from helpdesk_be.models.ticket import Ticket
+from helpdesk_be.models.ticket_comment import TicketComment
 from helpdesk_be.models.user import User
 from helpdesk_be.repositories.ticket import get_ticket_by_id, get_tickets_with_users
 from helpdesk_be.repositories.ticket_comment import get_comments_with_users_by_ticket_id
 from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest
+from helpdesk_be.schemas.request.v1.ticket_comment import CreateTicketCommentRequest
 from helpdesk_be.schemas.response.v1.ticket import (
     CreateTicketResponse,
     GetTicketResponse,
     GetTicketsResponseItem,
 )
-from helpdesk_be.schemas.response.v1.ticket_comment import GetTicketCommentsResponseItem
+from helpdesk_be.schemas.response.v1.ticket_comment import (
+    CreateTicketCommentResponse,
+    GetTicketCommentsResponseItem,
+)
 from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 
@@ -142,3 +147,43 @@ def list_ticket_comments(
         )
         for comment in comments
     ]
+
+
+@router.post(
+    "/{ticket_id}/comments",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CreateTicketCommentResponse,
+)
+def create_ticket_comment(
+    ticket_id: int,
+    body: CreateTicketCommentRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> CreateTicketCommentResponse:
+    ticket = get_ticket_by_id(session, ticket_id)
+
+    # 投稿権限は閲覧権限と同一(閲覧できるチケットには誰でも投稿できる仕様)のためcan_view_ticketを再利用する。
+    # 存在しない場合、および閲覧不可の場合はチケットの存在有無を推測させないよう404で統一する(fail-closed)
+    if ticket is None or not can_view_ticket(user, ticket):
+        raise NotFoundException("チケットが見つかりません")
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content=body.content,
+        created_by_user_id=user.id,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to create ticket comment {e}")
+        raise e
+
+    return CreateTicketCommentResponse(
+        id=new_comment.id,
+        ticket_id=new_comment.ticket_id,
+        content=new_comment.content,
+        created_by_user_id=user.id,
+        created_at=new_comment.created_at,
+    )
