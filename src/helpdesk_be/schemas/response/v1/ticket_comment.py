@@ -12,3 +12,15 @@ class GetTicketCommentsResponseItem(BaseV1ResponseSchema):
     content: str
     commenter_name: str
     created_at: datetime
+
+
+# チケット対応履歴(質問・返信)投稿APIのレスポンス。
+# create系はcreated_at/updated_atを含めない方針(CreateTicketResponse)だが、
+# コメント投稿は開いている対応履歴にその場で1件追記するUIを想定しているため、
+# 追記表示に必要なcreated_at(サーバー時刻が正)を例外的に含める
+class CreateTicketCommentResponse(BaseV1ResponseSchema):
+    id: int
+    ticket_id: int
+    content: str
+    created_by_user_id: int
+    created_at: datetime

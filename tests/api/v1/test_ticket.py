@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from helpdesk_be.models.ticket import Ticket
+from helpdesk_be.models.ticket_comment import TicketComment
 from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 from tests.conftest import RollbackTracker
@@ -786,3 +787,187 @@ def test_list_ticket_comments_with_nonexistent_ticket_returns_404(
     response = client.get("/api/v1/tickets/9999/comments")
 
     assert response.status_code == 404
+
+
+# ====================================================================
+# POST /tickets/{ticket_id}/comments
+# ====================================================================
+
+# リクエストの形式
+# POST → パスパラメータでticket_idを指定し、リクエストボディ(json)でcontent(必須)を送る
+# レスポンスの形式
+# 201 → 登録成功(登録された対応履歴のid/ticketId/content/createdByUserId/createdAtを返す)
+# 404 → 対象のチケットが存在しない、または閲覧権限がない場合(チケット詳細・対応履歴一覧と同一ルール。
+#       存在有無を推測させないため統一)
+# 422 → contentが未入力・空欄
+# 500 → DB登録処理自体が失敗(コミットエラー)
+#
+# 投稿権限は閲覧権限と同一(閲覧できるチケットには誰でも投稿できる)のため、ロール別の権限テストは
+# GET /tickets/{ticket_id}/comments側(test_list_ticket_comments_*)で担保済みのものは重複させない
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 正常系のテスト(閲覧可能なチケットに対応履歴を投稿すると201、DBに保存され、投稿者はログインユーザーになる)
+def test_create_ticket_comment_success(client: TestClient, db_session: Session) -> None:
+    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(db_session, created_by_user_id=user.id)
+
+    response = client.post(
+        f"/api/v1/tickets/{ticket.id}/comments",
+        json={"content": "追加で質問があります"},
+    )
+
+    assert response.status_code == 201
+    data = response.json()
+    assert data["content"] == "追加で質問があります"
+    assert data["ticketId"] == ticket.id
+    assert data["createdByUserId"] == user.id
+    assert "createdAt" in data
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.id == data["id"])
+    ).scalar_one()
+    assert comment.content == "追加で質問があります"
+    assert comment.ticket_id == ticket.id
+    assert comment.created_by_user_id == user.id
+
+
+# ------------------------
+
+# 準正常系のテスト
+# 投稿権限は閲覧権限と同一のため、閲覧できるチケットには質問者本人以外でも投稿できる
+
+
+# 第三者の社員でも、公開チケットには投稿できる
+def test_create_ticket_comment_on_other_users_public_ticket_returns_201(
+    client: TestClient, db_session: Session
+) -> None:
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=creator.id, visibility=TicketVisibilityType.PUBLIC
+    )
+    user = create_user_and_login(
+        db_session, client, name="社員B", email="employee_b@example.com", role=UserRoleType.EMPLOYEE
+    )
+
+    response = client.post(
+        f"/api/v1/tickets/{ticket.id}/comments",
+        json={"content": "対応します"},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["createdByUserId"] == user.id
+
+
+# ------------------------
+
+# 異常系のテスト
+# 存在しない、または閲覧権限がないチケットは404になる(チケット詳細・対応履歴一覧と同一ルール)
+
+
+# 存在しないticket_idを指定した場合は404
+def test_create_ticket_comment_with_nonexistent_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.post("/api/v1/tickets/9999/comments", json={"content": "質問です"})
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+
+# 第三者の社員は、他人の非公開チケットに投稿できない
+def test_create_ticket_comment_on_other_users_private_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=creator.id, visibility=TicketVisibilityType.PRIVATE
+    )
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.post(
+        f"/api/v1/tickets/{ticket.id}/comments",
+        json={"content": "質問です"},
+    )
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+# 異常系のテスト
+# 必須項目(content)が空欄のまま送信された場合は登録を受け付けない
+
+
+# contentが無い場合は422
+def test_create_ticket_comment_without_content_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(db_session, created_by_user_id=user.id)
+
+    response = client.post(f"/api/v1/tickets/{ticket.id}/comments", json={})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == [{"loc": ["body", "content"], "type": "missing"}]
+
+
+# ------------------------
+
+
+# contentが空文字列の場合も422
+def test_create_ticket_comment_with_empty_content_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(db_session, created_by_user_id=user.id)
+
+    response = client.post(f"/api/v1/tickets/{ticket.id}/comments", json={"content": ""})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == [{"loc": ["body", "content"], "type": "string_too_short"}]
+
+
+# ------------------------
+
+
+# contentが空白のみの場合も422
+def test_create_ticket_comment_with_blank_content_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    user = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(db_session, created_by_user_id=user.id)
+
+    response = client.post(f"/api/v1/tickets/{ticket.id}/comments", json={"content": "   "})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == [{"loc": ["body", "content"], "type": "string_too_short"}]
+
+
+# ------------------------
+
+# 異常系のテスト
+# DBへのコミット自体が失敗した場合はrollbackされ、500が返る
+
+
+def test_create_ticket_comment_with_commit_error(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    user = create_user_and_login(db_session, client_with_commit_error, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(db_session, created_by_user_id=user.id)
+
+    response = client_with_commit_error.post(
+        f"/api/v1/tickets/{ticket.id}/comments",
+        json={"content": "質問です"},
+    )
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
