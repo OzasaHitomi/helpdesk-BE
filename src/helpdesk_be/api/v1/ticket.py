@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from helpdesk_be.core.dependencies.auth import get_current_user
 from helpdesk_be.core.dependencies.database import get_db
+from helpdesk_be.exceptions.business_exception import BusinessException
 from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.not_found_exception import NotFoundException
 from helpdesk_be.loggers.custom_logger import logger
@@ -17,6 +18,7 @@ from helpdesk_be.repositories.ticket_comment import get_comments_with_users_by_t
 from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest
 from helpdesk_be.schemas.request.v1.ticket_comment import CreateTicketCommentRequest
 from helpdesk_be.schemas.response.v1.ticket import (
+    AssignTicketResponse,
     CreateTicketResponse,
     GetTicketResponse,
     GetTicketsResponseItem,
@@ -67,6 +69,9 @@ def create_ticket(
     )
 
 
+# ------------------------
+
+
 @router.get("", response_model=list[GetTicketsResponseItem])
 def list_tickets(
     user: Annotated[User, Depends(get_current_user)],
@@ -93,6 +98,9 @@ def list_tickets(
     ]
 
 
+# ------------------------
+
+
 @router.get("/{ticket_id}", response_model=GetTicketResponse)
 def get_ticket(
     ticket_id: int,
@@ -115,8 +123,12 @@ def get_ticket(
         detail=ticket.detail,
         visibility=ticket.visibility,
         status=ticket.status,
+        support_user_name=ticket.support_user.name if ticket.support_user else None,
         created_at=ticket.created_at,
     )
+
+
+# ------------------------
 
 
 @router.get("/{ticket_id}/comments", response_model=list[GetTicketCommentsResponseItem])
@@ -147,6 +159,9 @@ def list_ticket_comments(
         )
         for comment in comments
     ]
+
+
+# ------------------------
 
 
 @router.post(
@@ -186,4 +201,60 @@ def create_ticket_comment(
         content=new_comment.content,
         created_by_user_id=user.id,
         created_at=new_comment.created_at,
+    )
+
+
+# ------------------------
+
+
+@router.post("/{ticket_id}/assign", response_model=AssignTicketResponse)
+def assign_ticket_to_self(
+    ticket_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> AssignTicketResponse:
+    # --- 権限チェック: 担当者の自己アサインはサポート担当のみ許可する ---
+    if user.role != UserRoleType.SUPPORT:
+        raise ForbiddenException("サポート担当のみこの操作を実行できます")
+
+    # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
+    ticket = get_ticket_by_id(session, ticket_id)
+    if ticket is None:
+        raise NotFoundException("チケットが見つかりません")
+
+    # --- 状態チェック: すでに担当者が設定済み、またはステータスが新規質問以外の場合は
+    #     現在の状態と矛盾する操作として422(BusinessException)を返す ---
+    if ticket.support_user_id is not None:
+        raise BusinessException("すでに担当者が設定されています")
+    if ticket.status != TicketStatusType.NEW_QUESTION:
+        raise BusinessException("新規質問以外のチケットには担当者を設定できません")
+
+    # --- 更新処理: 担当者・ステータスを更新し、対応履歴にシステム履歴を追加する
+    #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする) ---
+    ticket.support_user_id = user.id
+    ticket.status = TicketStatusType.ASSIGNED
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content=f"担当者 {user.name} を担当に割り当てました",
+        created_by_user_id=None,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to assign ticket {e}")
+        raise e
+
+    # --- レスポンス構築 ---
+    # support_user_idはticket.support_user_id(型はint | None)ではなくuser.id(型はint)を使う。
+    # 直前でticket.support_user_id = user.idと代入済みで値は同じだが、
+    # ticket.support_user_idは静的な型がint | Noneのままのため、int専用のAssignTicketResponseに渡すと型エラーになる
+    return AssignTicketResponse(
+        id=ticket.id,
+        status=ticket.status,
+        support_user_id=user.id,
+        support_user_name=user.name,
+        updated_at=ticket.updated_at,
     )

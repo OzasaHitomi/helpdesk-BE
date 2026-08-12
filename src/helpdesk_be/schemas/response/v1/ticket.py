@@ -32,12 +32,21 @@ class GetTicketsResponseItem(BaseV1ResponseSchema):
     created_at: datetime
 
 
-# チケット詳細APIのレスポンス。質問者・担当者名は現時点の画面要件に無いため含めない
-# (ステータス変更等で担当者情報が必要になった際に別タスクで検討する)
+# チケット詳細APIのレスポンス。担当者未割当ての場合はsupport_user_nameはNone
 class GetTicketResponse(BaseV1ResponseSchema):
     id: int
     title: str
     detail: str
     visibility: TicketVisibilityType
     status: TicketStatusType
+    support_user_name: str | None
     created_at: datetime
+
+
+# チケット担当者の自己アサインAPIのレスポンス
+class AssignTicketResponse(BaseV1ResponseSchema):
+    id: int
+    status: TicketStatusType
+    support_user_id: int
+    support_user_name: str
+    updated_at: datetime
