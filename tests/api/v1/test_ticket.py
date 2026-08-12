@@ -574,11 +574,11 @@ def test_get_ticket_with_nonexistent_id_returns_404(
 
 # ------------------
 
-# 担当者の有無によってsupport_user_nameの値が変わることの確認
-# (未割当てはNone、割当て済みは担当者名の文字列になる)
+# 担当者の有無によってsupport_user_id/support_user_nameの値が変わることの確認
+# (未割当てはNone、割当て済みは担当者のid/名前になる)
 
 
-def test_get_ticket_returns_support_user_name_when_ticket_is_assigned(
+def test_get_ticket_returns_support_user_id_and_name_when_ticket_is_assigned(
     client: TestClient, db_session: Session
 ) -> None:
     creator = create_user(db_session, name="社員A", email="employee_a@example.com")
@@ -597,10 +597,11 @@ def test_get_ticket_returns_support_user_name_when_ticket_is_assigned(
     response = client.get(f"/api/v1/tickets/{ticket.id}")
 
     assert response.status_code == 200
+    assert response.json()["supportUserId"] == support_user.id
     assert response.json()["supportUserName"] == support_user.name
 
 
-def test_get_ticket_returns_none_support_user_name_when_ticket_is_unassigned(
+def test_get_ticket_returns_none_support_user_id_and_name_when_ticket_is_unassigned(
     client: TestClient, db_session: Session
 ) -> None:
     creator = create_user(db_session, name="社員A", email="employee_a@example.com")
@@ -612,6 +613,7 @@ def test_get_ticket_returns_none_support_user_name_when_ticket_is_unassigned(
     response = client.get(f"/api/v1/tickets/{ticket.id}")
 
     assert response.status_code == 200
+    assert response.json()["supportUserId"] is None
     assert response.json()["supportUserName"] is None
 
 
