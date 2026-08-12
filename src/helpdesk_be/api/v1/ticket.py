@@ -208,7 +208,7 @@ def create_ticket_comment(
 # ------------------------
 
 
-@router.post("/{ticket_id}/assign", response_model=AssignTicketResponse)
+@router.put("/{ticket_id}/assign", response_model=AssignTicketResponse)
 def assign_ticket_to_self(
     ticket_id: int,
     user: Annotated[User, Depends(get_current_user)],

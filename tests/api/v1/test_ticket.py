@@ -1021,11 +1021,11 @@ def test_create_ticket_comment_with_commit_error(
 
 
 # ====================================================================
-# POST /tickets/{ticket_id}/assign
+# PUT /tickets/{ticket_id}/assign
 # ====================================================================
 
 # リクエストの形式
-# POST → リクエストボディなし。対象は常にログイン中のユーザー自身
+# PUT → リクエストボディなし。対象は常にログイン中のユーザー自身
 # レスポンスの形式
 # 200 → 割り当て成功（id/status/support_user_id/support_user_name/updated_atを返す）
 # 403 → サポート担当以外のロールでログイン中
@@ -1046,7 +1046,7 @@ def test_assign_ticket_to_self_success(client: TestClient, db_session: Session) 
         db_session, client, name="担当花子", email="support@example.com", role=UserRoleType.SUPPORT
     )
 
-    response = client.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 200
     data = response.json()
@@ -1077,7 +1077,7 @@ def test_assign_ticket_with_employee_role_returns_403(
     questioner = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
     ticket = create_ticket(db_session, created_by_user_id=questioner.id)
 
-    response = client.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 403
 
@@ -1087,7 +1087,7 @@ def test_assign_ticket_with_admin_role_returns_403(client: TestClient, db_sessio
     ticket = create_ticket(db_session, created_by_user_id=questioner.id)
     create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
 
-    response = client.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 403
 
@@ -1103,7 +1103,7 @@ def test_assign_ticket_with_nonexistent_ticket_returns_404(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
 
-    response = client.post("/api/v1/tickets/9999/assign")
+    response = client.put("/api/v1/tickets/9999/assign")
 
     assert response.status_code == 404
 
@@ -1129,7 +1129,7 @@ def test_assign_ticket_with_already_assigned_ticket_returns_422(
     )
     create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
 
-    response = client.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 422
     assert response.json()["type"] == "BUSINESS_ERROR"
@@ -1150,7 +1150,7 @@ def test_assign_ticket_with_non_new_question_status_returns_422(
     ticket = create_ticket(db_session, created_by_user_id=questioner.id, status=ticket_status)
     create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
 
-    response = client.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 422
     assert response.json()["type"] == "BUSINESS_ERROR"
@@ -1171,7 +1171,7 @@ def test_assign_ticket_with_commit_error(
     ticket = create_ticket(db_session, created_by_user_id=questioner.id)
     create_user_and_login(db_session, client_with_commit_error, role=UserRoleType.SUPPORT)
 
-    response = client_with_commit_error.post(f"/api/v1/tickets/{ticket.id}/assign")
+    response = client_with_commit_error.put(f"/api/v1/tickets/{ticket.id}/assign")
 
     assert response.status_code == 500
     assert rollback_tracker.called is True
