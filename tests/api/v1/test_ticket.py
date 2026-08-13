@@ -1175,3 +1175,179 @@ def test_assign_ticket_with_commit_error(
 
     assert response.status_code == 500
     assert rollback_tracker.called is True
+
+
+# ====================================================================
+# DELETE /tickets/{ticket_id}/assign
+# ====================================================================
+
+# リクエストの形式
+# DELETE → リクエストボディなし。対象は常にログイン中のユーザー自身が担当しているチケット
+# レスポンスの形式
+# 200 → 解除成功（id/status/support_user_id(null)/support_user_name(null)/updated_atを返す）
+# 403 → 自分が担当していないチケット(ロール違い・未担当・別担当者いずれもこれに該当)
+# 404 → 存在しないticket_id
+# 422 → ステータスが担当者割当て済み/対応中以外(type="BUSINESS_ERROR")
+# 500 → DB更新処理自体が失敗（コミットエラー）
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 正常系のテスト（サポート担当が自分の担当中(ASSIGNED/IN_PROGRESS)チケットを解除すると200、
+# チケットの担当者がNoneに戻りステータスが新規質問になり、対応履歴にシステム履歴が追加される）
+@pytest.mark.parametrize(
+    "ticket_status",
+    [
+        pytest.param(TicketStatusType.ASSIGNED, id="assigned"),
+        pytest.param(TicketStatusType.IN_PROGRESS, id="in_progress"),
+    ],
+)
+def test_unassign_ticket_success(
+    client: TestClient, db_session: Session, ticket_status: TicketStatusType
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(
+        db_session, client, name="担当花子", email="support@example.com", role=UserRoleType.SUPPORT
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=ticket_status,
+    )
+
+    response = client.delete(f"/api/v1/tickets/{ticket.id}/assign")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == "new_question"
+    assert data["supportUserId"] is None
+    assert data["supportUserName"] is None
+
+    db_session.refresh(ticket)
+    assert ticket.support_user_id is None
+    assert ticket.status == TicketStatusType.NEW_QUESTION
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    assert comment.created_by_user_id is None
+    assert comment.content == f"担当者 {support_user.name} の担当を解除しました"
+
+
+# ------------------------
+
+# 準正常系のテスト
+# 自分が担当していないチケットは解除できない(ロール違い・未担当・別担当者いずれも403)
+
+
+@pytest.mark.parametrize(
+    ("login_role", "assign_other_support"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, True, id="employee_role"),
+        pytest.param(UserRoleType.ADMIN, True, id="admin_role"),
+        pytest.param(UserRoleType.SUPPORT, True, id="different_support_user"),
+        pytest.param(UserRoleType.SUPPORT, False, id="unassigned_ticket"),
+    ],
+)
+def test_unassign_ticket_with_non_owner_returns_403(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+    assign_other_support: bool,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    if assign_other_support:
+        other_support = create_user(
+            db_session, name="担当次郎", email="support2@example.com", role=UserRoleType.SUPPORT
+        )
+        ticket = create_ticket(
+            db_session,
+            created_by_user_id=questioner.id,
+            support_user_id=other_support.id,
+            status=TicketStatusType.ASSIGNED,
+        )
+    else:
+        ticket = create_ticket(db_session, created_by_user_id=questioner.id)
+    create_user_and_login(db_session, client, role=login_role)
+
+    response = client.delete(f"/api/v1/tickets/{ticket.id}/assign")
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+# 異常系のテスト
+# 存在しないticket_idを指定した場合は404
+
+
+def test_unassign_ticket_with_nonexistent_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+
+    response = client.delete("/api/v1/tickets/9999/assign")
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+# 異常系のテスト
+# チケットの現在の状態と矛盾する場合は422(type="BUSINESS_ERROR")が返る
+
+
+@pytest.mark.parametrize(
+    "ticket_status",
+    [
+        pytest.param(TicketStatusType.NEW_QUESTION, id="new_question"),
+        pytest.param(TicketStatusType.RESOLVED, id="resolved"),
+        pytest.param(TicketStatusType.CLOSED, id="closed"),
+    ],
+)
+def test_unassign_ticket_with_non_assignable_status_returns_422(
+    client: TestClient, db_session: Session, ticket_status: TicketStatusType
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=ticket_status,
+    )
+
+    response = client.delete(f"/api/v1/tickets/{ticket.id}/assign")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# DBへの更新自体が失敗した場合はrollbackされ、500が返る
+
+
+def test_unassign_ticket_with_commit_error(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(
+        db_session, client_with_commit_error, role=UserRoleType.SUPPORT
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=TicketStatusType.ASSIGNED,
+    )
+
+    response = client_with_commit_error.delete(f"/api/v1/tickets/{ticket.id}/assign")
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
