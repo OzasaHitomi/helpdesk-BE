@@ -22,6 +22,7 @@ from helpdesk_be.schemas.response.v1.ticket import (
     CreateTicketResponse,
     GetTicketResponse,
     GetTicketsResponseItem,
+    UnassignTicketResponse,
 )
 from helpdesk_be.schemas.response.v1.ticket_comment import (
     CreateTicketCommentResponse,
@@ -257,5 +258,57 @@ def assign_ticket_to_self(
         status=ticket.status,
         support_user_id=user.id,
         support_user_name=user.name,
+        updated_at=ticket.updated_at,
+    )
+
+
+# ------------------------
+
+
+@router.delete("/{ticket_id}/assign", response_model=UnassignTicketResponse)
+def unassign_ticket(
+    ticket_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> UnassignTicketResponse:
+    # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
+    ticket = get_ticket_by_id(session, ticket_id)
+    if ticket is None:
+        raise NotFoundException("チケットが見つかりません")
+
+    # --- 本人チェック: 自分が担当しているチケットのみ解除できる。
+    #     support_user_idはSUPPORTロールのユーザーしかセットされない(assign_ticket_to_self参照)ため、
+    #     このチェック1つでロール違い・未担当・別担当者のケースを全てカバーできる ---
+    if ticket.support_user_id != user.id:
+        raise ForbiddenException("自分が担当しているチケットのみ担当解除できます")
+
+    # --- 状態チェック: 担当者割り当て済み・対応中以外のステータスは解除できない ---
+    if ticket.status not in (TicketStatusType.ASSIGNED, TicketStatusType.IN_PROGRESS):
+        raise BusinessException("このステータスのチケットは担当解除できません")
+
+    # --- 更新処理: 担当者を外しステータスを新規質問に戻し、対応履歴にシステム履歴を追加する
+    #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする) ---
+    assignee_name = user.name  # support_user_idをクリアする前に退避する
+    ticket.support_user_id = None
+    ticket.status = TicketStatusType.NEW_QUESTION
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content=f"担当者 {assignee_name} の担当を解除しました",
+        created_by_user_id=None,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to unassign ticket {e}")
+        raise e
+
+    return UnassignTicketResponse(
+        id=ticket.id,
+        status=ticket.status,
+        support_user_id=ticket.support_user_id,
+        support_user_name=None,
         updated_at=ticket.updated_at,
     )

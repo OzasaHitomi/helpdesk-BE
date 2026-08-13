@@ -51,3 +51,12 @@ class AssignTicketResponse(BaseV1ResponseSchema):
     support_user_id: int
     support_user_name: str
     updated_at: datetime
+
+
+# チケット担当解除APIのレスポンス。解除後は担当者がいなくなるためNone
+class UnassignTicketResponse(BaseV1ResponseSchema):
+    id: int
+    status: TicketStatusType
+    support_user_id: int | None
+    support_user_name: str | None
+    updated_at: datetime
