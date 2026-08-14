@@ -1391,10 +1391,16 @@ STATUS_DISPLAY_NAMES: dict[TicketStatusType, str] = {
 @pytest.mark.parametrize(
     ("current_status", "next_status"),
     [
-        pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.IN_PROGRESS, id="assigned_to_in_progress"),
-        pytest.param(TicketStatusType.IN_PROGRESS, TicketStatusType.RESOLVED, id="in_progress_to_resolved"),
+        pytest.param(
+            TicketStatusType.ASSIGNED, TicketStatusType.IN_PROGRESS, id="assigned_to_in_progress"
+        ),
+        pytest.param(
+            TicketStatusType.IN_PROGRESS, TicketStatusType.RESOLVED, id="in_progress_to_resolved"
+        ),
         pytest.param(TicketStatusType.RESOLVED, TicketStatusType.CLOSED, id="resolved_to_closed"),
-        pytest.param(TicketStatusType.CLOSED, TicketStatusType.IN_PROGRESS, id="closed_to_in_progress"),
+        pytest.param(
+            TicketStatusType.CLOSED, TicketStatusType.IN_PROGRESS, id="closed_to_in_progress"
+        ),
     ],
 )
 def test_update_ticket_status_success(
@@ -1550,9 +1556,13 @@ def test_update_ticket_status_with_nonexistent_ticket_returns_404(
     ("current_status", "next_status"),
     [
         # NEW_QUESTIONからの遷移はすべて不可(担当者割当てはassign_ticket_to_selfが専任)
-        pytest.param(TicketStatusType.NEW_QUESTION, TicketStatusType.ASSIGNED, id="new_question_to_assigned"),
+        pytest.param(
+            TicketStatusType.NEW_QUESTION, TicketStatusType.ASSIGNED, id="new_question_to_assigned"
+        ),
         # NEW_QUESTIONへの遷移はどのステータスからも不可
-        pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.NEW_QUESTION, id="assigned_to_new_question"),
+        pytest.param(
+            TicketStatusType.ASSIGNED, TicketStatusType.NEW_QUESTION, id="assigned_to_new_question"
+        ),
         # 現在と同じステータスへの遷移(no-op)は不可
         pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.ASSIGNED, id="assigned_no_op"),
         # 許可リストにない遷移(上記2パターンに当てはまらないケース)は不可

@@ -25,7 +25,9 @@ def test_can_transition_ticket_status_returns_false_from_new_question(
     [TicketStatusType.IN_PROGRESS, TicketStatusType.RESOLVED, TicketStatusType.CLOSED],
     ids=lambda s: s.value,
 )
-def test_can_transition_ticket_status_returns_true_from_assigned(next_status: TicketStatusType) -> None:
+def test_can_transition_ticket_status_returns_true_from_assigned(
+    next_status: TicketStatusType,
+) -> None:
     assert can_transition_ticket_status(TicketStatusType.ASSIGNED, next_status) is True
 
 
@@ -38,7 +40,9 @@ def test_can_transition_ticket_status_returns_true_from_assigned(next_status: Ti
     [TicketStatusType.ASSIGNED, TicketStatusType.RESOLVED, TicketStatusType.CLOSED],
     ids=lambda s: s.value,
 )
-def test_can_transition_ticket_status_returns_true_from_in_progress(next_status: TicketStatusType) -> None:
+def test_can_transition_ticket_status_returns_true_from_in_progress(
+    next_status: TicketStatusType,
+) -> None:
     assert can_transition_ticket_status(TicketStatusType.IN_PROGRESS, next_status) is True
 
 
@@ -51,7 +55,9 @@ def test_can_transition_ticket_status_returns_true_from_in_progress(next_status:
     [TicketStatusType.IN_PROGRESS, TicketStatusType.CLOSED],
     ids=lambda s: s.value,
 )
-def test_can_transition_ticket_status_returns_true_from_resolved(next_status: TicketStatusType) -> None:
+def test_can_transition_ticket_status_returns_true_from_resolved(
+    next_status: TicketStatusType,
+) -> None:
     assert can_transition_ticket_status(TicketStatusType.RESOLVED, next_status) is True
 
 
@@ -60,7 +66,9 @@ def test_can_transition_ticket_status_returns_true_from_resolved(next_status: Ti
 
 # クローズからは対応中(再オープン)のみ遷移できる
 def test_can_transition_ticket_status_returns_true_from_closed_to_in_progress() -> None:
-    assert can_transition_ticket_status(TicketStatusType.CLOSED, TicketStatusType.IN_PROGRESS) is True
+    assert (
+        can_transition_ticket_status(TicketStatusType.CLOSED, TicketStatusType.IN_PROGRESS) is True
+    )
 
 
 # ---------------------------------------------------------------------------------------

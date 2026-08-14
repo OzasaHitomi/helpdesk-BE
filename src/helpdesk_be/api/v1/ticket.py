@@ -369,6 +369,10 @@ def update_ticket_status(
 
     # 対応履歴の一覧表示上は管理者操作を「管理者」と匿名化するため、
     # 誰が操作したかをアプリケーションログには名前入りで残す
-    logger.info(f"ticket status updated: ticket_id={ticket.id} by user_id={user.id} name={user.name}")
+    logger.info(
+        f"ticket status updated: ticket_id={ticket.id} by user_id={user.id} name={user.name}"
+    )
 
-    return UpdateTicketStatusResponse(id=ticket.id, status=ticket.status, updated_at=ticket.updated_at)
+    return UpdateTicketStatusResponse(
+        id=ticket.id, status=ticket.status, updated_at=ticket.updated_at
+    )
