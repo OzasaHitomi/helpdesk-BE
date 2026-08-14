@@ -156,21 +156,25 @@ def list_ticket_comments(
     # 対応者は"system"と表示する。
     # 投稿者がADMINの場合は個人名を出さず「管理者」と匿名化する(実際の投稿者IDはcreated_by_user_idに
     # 保持されるためDB上では追跡可能。加えて操作時にアプリケーションログへ実名を出力する箇所もある)
-    return [
-        GetTicketCommentsResponseItem(
-            id=comment.id,
-            content=comment.content,
-            commenter_name=(
-                "system"
-                if comment.commenter is None
-                else "管理者"
-                if comment.commenter.role == UserRoleType.ADMIN
-                else comment.commenter.name
-            ),
-            created_at=comment.created_at,
+    result = []
+    for comment in comments:
+        if comment.commenter is None:
+            commenter_name = "system"
+        elif comment.commenter.role == UserRoleType.ADMIN:
+            commenter_name = "管理者"
+        else:
+            commenter_name = comment.commenter.name
+
+        result.append(
+            GetTicketCommentsResponseItem(
+                id=comment.id,
+                content=comment.content,
+                commenter_name=commenter_name,
+                created_at=comment.created_at,
+            )
         )
-        for comment in comments
-    ]
+
+    return result
 
 
 # ------------------------
