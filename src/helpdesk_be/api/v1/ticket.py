@@ -10,12 +10,13 @@ from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.not_found_exception import NotFoundException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.logic.business.ticket_permission import can_view_ticket
+from helpdesk_be.logic.business.ticket_status_transition import can_transition_ticket_status
 from helpdesk_be.models.ticket import Ticket
 from helpdesk_be.models.ticket_comment import TicketComment
 from helpdesk_be.models.user import User
 from helpdesk_be.repositories.ticket import get_ticket_by_id, get_tickets_with_users
 from helpdesk_be.repositories.ticket_comment import get_comments_with_users_by_ticket_id
-from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest
+from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest, UpdateTicketStatusRequest
 from helpdesk_be.schemas.request.v1.ticket_comment import CreateTicketCommentRequest
 from helpdesk_be.schemas.response.v1.ticket import (
     AssignTicketResponse,
@@ -23,6 +24,7 @@ from helpdesk_be.schemas.response.v1.ticket import (
     GetTicketResponse,
     GetTicketsResponseItem,
     UnassignTicketResponse,
+    UpdateTicketStatusResponse,
 )
 from helpdesk_be.schemas.response.v1.ticket_comment import (
     CreateTicketCommentResponse,
@@ -151,12 +153,20 @@ def list_ticket_comments(
     # TicketCommentモデルのリストをレスポンススキーマへ変換する。
     # commenterはコメントの投稿者(User)とのリレーションで、その名前をcommenter_nameとして詰め替えている。
     # 投稿者がいない行(created_by_user_id=NULL)は担当者割り当て等でシステムが自動登録した履歴のため、
-    # 対応者は"system"と表示する
+    # 対応者は"system"と表示する。
+    # 投稿者がADMINの場合は個人名を出さず「管理者」と匿名化する(実際の投稿者IDはcreated_by_user_idに
+    # 保持されるためDB上では追跡可能。加えて操作時にアプリケーションログへ実名を出力する箇所もある)
     return [
         GetTicketCommentsResponseItem(
             id=comment.id,
             content=comment.content,
-            commenter_name=(comment.commenter.name if comment.commenter is not None else "system"),
+            commenter_name=(
+                "system"
+                if comment.commenter is None
+                else "管理者"
+                if comment.commenter.role == UserRoleType.ADMIN
+                else comment.commenter.name
+            ),
             created_at=comment.created_at,
         )
         for comment in comments
@@ -312,3 +322,53 @@ def unassign_ticket(
         support_user_name=None,
         updated_at=ticket.updated_at,
     )
+
+
+# ------------------------
+
+
+@router.put("/{ticket_id}/status", response_model=UpdateTicketStatusResponse)
+def update_ticket_status(
+    ticket_id: int,
+    body: UpdateTicketStatusRequest,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> UpdateTicketStatusResponse:
+    # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
+    ticket = get_ticket_by_id(session, ticket_id)
+    if ticket is None:
+        raise NotFoundException("チケットが見つかりません")
+
+    # --- 権限チェック: 自分が担当しているチケットのSUPPORT、またはADMINのみ変更可能。
+    #     support_user_idはSUPPORTロールのユーザーしかセットされない(assign_ticket_to_self参照)ため、
+    #     ADMIN以外はsupport_user_id != user.idの1チェックでロール違い・非担当をカバーできる ---
+    if user.role != UserRoleType.ADMIN and ticket.support_user_id != user.id:
+        raise ForbiddenException("担当者または管理者のみステータスを変更できます")
+
+    # --- 状態チェック: 定義された遷移ルールに反する変更は422(BusinessException)を返す ---
+    if not can_transition_ticket_status(ticket.status, body.status):
+        raise BusinessException("このステータス変更はできません")
+
+    # --- 更新処理: ステータスを更新し、対応履歴にシステム履歴を追加する
+    #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする)
+    #     status_display_nameはFEが管理する表示名をそのまま受け取って保存する ---
+    ticket.status = body.status
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content=f"ステータスを「{body.status_display_name}」に変更しました",
+        created_by_user_id=user.id,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to update ticket status {e}")
+        raise e
+
+    # 対応履歴の一覧表示上は管理者操作を「管理者」と匿名化するため、
+    # 誰が操作したかをアプリケーションログには名前入りで残す
+    logger.info(f"ticket status updated: ticket_id={ticket.id} by user_id={user.id} name={user.name}")
+
+    return UpdateTicketStatusResponse(id=ticket.id, status=ticket.status, updated_at=ticket.updated_at)

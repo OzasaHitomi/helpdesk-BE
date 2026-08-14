@@ -3,6 +3,7 @@ from typing import Annotated
 from pydantic import Field, StringConstraints
 
 from helpdesk_be.schemas.request.v1.base import BaseV1RequestSchema
+from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
 from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 
 # 前後の空白を除去した上でmin_lengthを判定する(空白のみの入力は未入力とみなしてNGにするため)
@@ -17,3 +18,11 @@ class CreateTicketRequest(BaseV1RequestSchema):
     detail: NotBlankStr
     # 省略を許容しない(必ず利用者に公開設定を選択させる運用のため)
     visibility: TicketVisibilityType
+
+
+# チケットステータス変更APIのリクエストボディを表すスキーマ
+class UpdateTicketStatusRequest(BaseV1RequestSchema):
+    status: TicketStatusType
+    # 対応履歴のcontentに埋め込む表示用ステータス名(例:「対応中」)。
+    # 表示名はFEが管理するためBEでは保持せず、リクエストでそのまま受け取りそのまま保存する
+    status_display_name: NotBlankStr = Field(max_length=50)

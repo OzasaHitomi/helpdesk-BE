@@ -1351,3 +1351,259 @@ def test_unassign_ticket_with_commit_error(
 
     assert response.status_code == 500
     assert rollback_tracker.called is True
+
+
+# ====================================================================
+# PUT /tickets/{ticket_id}/status
+# ====================================================================
+
+# リクエストの形式
+# PUT → リクエストボディ(json)でstatus/status_display_name(すべて必須)を送る。表示名はFEが管理し、
+#       対応履歴のcontentにそのまま使われる
+# レスポンスの形式
+# 200 → 変更成功（id/status/updated_atを返す）
+# 403 → 自分が担当していないSUPPORT、または社員でログイン中
+# 404 → 存在しないticket_id
+# 422 → 定義された遷移ルールに反する変更(type="BUSINESS_ERROR")
+# 500 → DB更新処理自体が失敗（コミットエラー）
+#
+# 遷移ルールの網羅的な組み合わせはlogic/business/test_ticket_status_transition.pyで単体テスト済みのため、
+# ここでは代表的なケースのみ確認する
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# ステータスの表示名はFEが管理しているものと同じ値を使う
+STATUS_DISPLAY_NAMES: dict[TicketStatusType, str] = {
+    TicketStatusType.NEW_QUESTION: "新規質問",
+    TicketStatusType.ASSIGNED: "担当者アサイン済み",
+    TicketStatusType.IN_PROGRESS: "対応中",
+    TicketStatusType.RESOLVED: "解決済み",
+    TicketStatusType.CLOSED: "クローズ",
+}
+
+
+# 正常系のテスト（自分が担当しているSUPPORTが許可された遷移を行うと200、
+# チケットのステータスが更新され、対応履歴にstatus_display_nameを使ったシステム履歴が追加される）
+# 遷移ルールの網羅的な組み合わせはlogic/business/test_ticket_status_transition.pyで単体テスト済みのため、
+# ここではcurrent_statusごとに代表的な1パターンのみ確認する
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.IN_PROGRESS, id="assigned_to_in_progress"),
+        pytest.param(TicketStatusType.IN_PROGRESS, TicketStatusType.RESOLVED, id="in_progress_to_resolved"),
+        pytest.param(TicketStatusType.RESOLVED, TicketStatusType.CLOSED, id="resolved_to_closed"),
+        pytest.param(TicketStatusType.CLOSED, TicketStatusType.IN_PROGRESS, id="closed_to_in_progress"),
+    ],
+)
+def test_update_ticket_status_success(
+    client: TestClient,
+    db_session: Session,
+    current_status: TicketStatusType,
+    next_status: TicketStatusType,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(
+        db_session, client, name="担当花子", email="support@example.com", role=UserRoleType.SUPPORT
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=current_status,
+    )
+    next_status_display_name = STATUS_DISPLAY_NAMES[next_status]
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": next_status.value, "statusDisplayName": next_status_display_name},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["status"] == next_status.value
+
+    db_session.refresh(ticket)
+    assert ticket.status == next_status
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    assert comment.created_by_user_id == support_user.id
+    assert comment.content == f"ステータスを「{next_status_display_name}」に変更しました"
+
+
+# ------------------------
+
+# 準正常系のテスト
+# 管理者は自分が担当していないチケットでもステータスを変更できる。ただし対応履歴一覧では
+# 個人名ではなく「管理者」と表示される
+
+
+def test_update_ticket_status_with_admin_returns_200_and_masks_commenter_name(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user(
+        db_session, name="担当花子", email="support@example.com", role=UserRoleType.SUPPORT
+    )
+    admin_user = create_user_and_login(
+        db_session, client, name="管理花子", email="admin@example.com", role=UserRoleType.ADMIN
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=TicketStatusType.ASSIGNED,
+    )
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+    )
+
+    assert response.status_code == 200
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    assert comment.created_by_user_id == admin_user.id
+
+    comments_response = client.get(f"/api/v1/tickets/{ticket.id}/comments")
+    assert comments_response.json()[0]["commenterName"] == "管理者"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 自分が担当していないSUPPORT、または社員は変更できない
+
+
+@pytest.mark.parametrize(
+    ("login_role", "assign_other_support"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, False, id="employee_role"),
+        pytest.param(UserRoleType.SUPPORT, True, id="different_support_user"),
+        pytest.param(UserRoleType.SUPPORT, False, id="unassigned_ticket"),
+    ],
+)
+def test_update_ticket_status_with_non_owner_returns_403(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+    assign_other_support: bool,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    if assign_other_support:
+        other_support = create_user(
+            db_session, name="担当次郎", email="support2@example.com", role=UserRoleType.SUPPORT
+        )
+        ticket = create_ticket(
+            db_session,
+            created_by_user_id=questioner.id,
+            support_user_id=other_support.id,
+            status=TicketStatusType.ASSIGNED,
+        )
+    else:
+        ticket = create_ticket(
+            db_session, created_by_user_id=questioner.id, status=TicketStatusType.ASSIGNED
+        )
+    create_user_and_login(db_session, client, role=login_role)
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+    )
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+# 異常系のテスト
+# 存在しないticket_idを指定した場合は404
+
+
+def test_update_ticket_status_with_nonexistent_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+
+    response = client.put(
+        "/api/v1/tickets/9999/status",
+        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+    )
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+# 異常系のテスト
+# 定義された遷移ルールに反する場合は422(type="BUSINESS_ERROR")が返る
+# 遷移ルールの網羅的な組み合わせはlogic/business/test_ticket_status_transition.pyで単体テスト済みのため、
+# ここでは不可理由の種類ごとに代表的な1パターンのみ確認する
+
+
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        # NEW_QUESTIONからの遷移はすべて不可(担当者割当てはassign_ticket_to_selfが専任)
+        pytest.param(TicketStatusType.NEW_QUESTION, TicketStatusType.ASSIGNED, id="new_question_to_assigned"),
+        # NEW_QUESTIONへの遷移はどのステータスからも不可
+        pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.NEW_QUESTION, id="assigned_to_new_question"),
+        # 現在と同じステータスへの遷移(no-op)は不可
+        pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.ASSIGNED, id="assigned_no_op"),
+        # 許可リストにない遷移(上記2パターンに当てはまらないケース)は不可
+        pytest.param(TicketStatusType.CLOSED, TicketStatusType.RESOLVED, id="closed_to_resolved"),
+    ],
+)
+def test_update_ticket_status_with_disallowed_transition_returns_422(
+    client: TestClient,
+    db_session: Session,
+    current_status: TicketStatusType,
+    next_status: TicketStatusType,
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(db_session, created_by_user_id=questioner.id, status=current_status)
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": next_status.value, "statusDisplayName": "対応中"},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# DBへの更新自体が失敗した場合はrollbackされ、500が返る
+
+
+def test_update_ticket_status_with_commit_error(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(
+        db_session, client_with_commit_error, role=UserRoleType.SUPPORT
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=TicketStatusType.ASSIGNED,
+    )
+
+    response = client_with_commit_error.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+    )
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
