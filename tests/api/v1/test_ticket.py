@@ -1434,6 +1434,7 @@ def test_update_ticket_status_success(
 
 # ------------------------
 
+
 # 準正常系のテスト
 # statusDisplayNameはリクエストスキーマに存在しないため、クライアントが任意の文字列を付けて送っても
 # 無視され、対応履歴にはBE側のTICKET_STATUS_DISPLAY_NAMESから求めた値が使われる
@@ -1583,21 +1584,50 @@ def test_update_ticket_status_with_nonexistent_ticket_returns_404(
 @pytest.mark.parametrize(
     ("current_status", "next_status"),
     [
-        # NEW_QUESTIONからの遷移はすべて不可(担当者割当てはassign_ticket_to_selfが専任)
-        pytest.param(
-            TicketStatusType.NEW_QUESTION, TicketStatusType.ASSIGNED, id="new_question_to_assigned"
-        ),
-        # NEW_QUESTIONへの遷移はどのステータスからも不可
-        pytest.param(
-            TicketStatusType.ASSIGNED, TicketStatusType.NEW_QUESTION, id="assigned_to_new_question"
-        ),
         # 現在と同じステータスへの遷移(no-op)は不可
         pytest.param(TicketStatusType.ASSIGNED, TicketStatusType.ASSIGNED, id="assigned_no_op"),
-        # 許可リストにない遷移(上記2パターンに当てはまらないケース)は不可
+        # 許可リストにない遷移は不可
         pytest.param(TicketStatusType.CLOSED, TicketStatusType.RESOLVED, id="closed_to_resolved"),
     ],
 )
 def test_update_ticket_status_with_disallowed_transition_returns_422(
+    client: TestClient,
+    db_session: Session,
+    current_status: TicketStatusType,
+    next_status: TicketStatusType,
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(db_session, created_by_user_id=questioner.id, status=current_status)
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={"status": next_status.value},
+    )
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 新規質問への/からの遷移は担当者割当て/解除(assign_ticket_to_self/unassign_ticket)の専任領域のため、
+# ticket_status_transition.py上は許可されている遷移であってもこのAPIでは422になる
+
+
+@pytest.mark.parametrize(
+    ("current_status", "next_status"),
+    [
+        pytest.param(
+            TicketStatusType.NEW_QUESTION, TicketStatusType.ASSIGNED, id="new_question_to_assigned"
+        ),
+        pytest.param(
+            TicketStatusType.ASSIGNED, TicketStatusType.NEW_QUESTION, id="assigned_to_new_question"
+        ),
+    ],
+)
+def test_update_ticket_status_with_new_question_involved_returns_422(
     client: TestClient,
     db_session: Session,
     current_status: TicketStatusType,

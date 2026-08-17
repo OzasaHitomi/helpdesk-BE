@@ -336,8 +336,12 @@ def update_ticket_status(
     if user.role != UserRoleType.ADMIN and ticket.support_user_id != user.id:
         raise ForbiddenException("担当者または管理者のみステータスを変更できます")
 
-    # --- 状態チェック: 定義された遷移ルールに反する変更は422(BusinessException)を返す ---
-    if not can_transition_ticket_status(ticket.status, body.status):
+    # --- 状態チェック: 新規質問への/からの遷移は担当者割当て/解除(assign_ticket_to_self/unassign_ticket)の
+    #     専任領域のためこのAPIでは扱わない。加えて、定義された遷移ルールに反する変更も422(BusinessException)を返す ---
+    if TicketStatusType.NEW_QUESTION in (
+        ticket.status,
+        body.status,
+    ) or not can_transition_ticket_status(ticket.status, body.status):
         raise BusinessException("このステータス変更はできません")
 
     # --- 更新処理: ステータスを更新し、対応履歴にシステム履歴を追加する
