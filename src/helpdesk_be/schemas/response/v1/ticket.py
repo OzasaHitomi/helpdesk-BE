@@ -60,3 +60,10 @@ class UnassignTicketResponse(BaseV1ResponseSchema):
     support_user_id: int | None
     support_user_name: str | None
     updated_at: datetime
+
+
+# チケットステータス変更APIのレスポンス
+class UpdateTicketStatusResponse(BaseV1ResponseSchema):
+    id: int
+    status: TicketStatusType
+    updated_at: datetime

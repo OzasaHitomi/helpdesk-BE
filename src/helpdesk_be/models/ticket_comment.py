@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from helpdesk_be.logic.calculate.calc_datetime import get_now
 from helpdesk_be.models.base import Base
 from helpdesk_be.models.user import User
+from helpdesk_be.store.enum.user_role_type import UserRoleType
 
 
 # チケット詳細画面の対応履歴(質疑応答の質問・返信)1件を表すテーブル。
@@ -24,7 +25,7 @@ class TicketComment(Base):
     # 投稿者。閲覧可能なチケットには誰でも投稿できる仕様(別タスク)のため、質問者・サポート担当以外のユーザーも入り得る。
     # 担当者割り当て等でシステムが自動登録した履歴の場合はNULL(画面上の対応者は"system"と表示する)。
     # このテーブルでNULLが表す意味は「システム履歴」のみとし、別の意味でNULLを使う仕様変更を行う場合は
-    # 表示側(api/v1/ticket_comment.py)の"system"判定と合わせて見直すこと
+    # commenter_display_name()の"system"判定と合わせて見直すこと
     created_by_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=True
     )
@@ -36,3 +37,14 @@ class TicketComment(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=False, default=get_now, onupdate=get_now
     )
+
+    # 対応履歴一覧での投稿者名の表示ルール。
+    # 投稿者がいない行(created_by_user_id=NULL)は担当者割り当て等でシステムが自動登録した履歴のため"system"。
+    # 投稿者がADMINの場合は個人名を出さず「管理者」と匿名化する
+    # (実際の投稿者IDはcreated_by_user_idに保持されるためDB上では追跡可能)
+    def commenter_display_name(self) -> str:
+        if self.commenter is None:
+            return "system"
+        if self.commenter.role == UserRoleType.ADMIN:
+            return "管理者"
+        return self.commenter.name
