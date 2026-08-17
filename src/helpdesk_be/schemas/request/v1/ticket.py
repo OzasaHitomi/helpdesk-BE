@@ -23,6 +23,3 @@ class CreateTicketRequest(BaseV1RequestSchema):
 # チケットステータス変更APIのリクエストボディを表すスキーマ
 class UpdateTicketStatusRequest(BaseV1RequestSchema):
     status: TicketStatusType
-    # 対応履歴のcontentに埋め込む表示用ステータス名(例:「対応中」)。
-    # 表示名はFEが管理するためBEでは保持せず、リクエストでそのまま受け取りそのまま保存する
-    status_display_name: NotBlankStr = Field(max_length=50)

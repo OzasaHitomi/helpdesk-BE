@@ -10,6 +10,7 @@ from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.not_found_exception import NotFoundException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.logic.business.ticket_permission import can_view_ticket
+from helpdesk_be.logic.business.ticket_status_display_name import get_ticket_status_display_name
 from helpdesk_be.logic.business.ticket_status_transition import can_transition_ticket_status
 from helpdesk_be.models.ticket import Ticket
 from helpdesk_be.models.ticket_comment import TicketComment
@@ -341,12 +342,14 @@ def update_ticket_status(
 
     # --- 更新処理: ステータスを更新し、対応履歴にシステム履歴を追加する
     #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする)
-    #     status_display_nameはFEが管理する表示名をそのまま受け取って保存する ---
+    #     表示用ステータス名はクライアントから受け取らず、BE側のマッピング(get_ticket_status_display_name)
+    #     から求める(クライアント入力をそのまま履歴に埋め込むと任意文字列を残せてしまうため) ---
     ticket.status = body.status
+    status_display_name = get_ticket_status_display_name(body.status)
 
     new_comment = TicketComment(
         ticket_id=ticket.id,
-        content=f"ステータスを「{body.status_display_name}」に変更しました",
+        content=f"ステータスを「{status_display_name}」に変更しました",
         created_by_user_id=user.id,
     )
     session.add(new_comment)

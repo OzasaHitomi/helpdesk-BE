@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from helpdesk_be.logic.business.ticket_status_display_name import TICKET_STATUS_DISPLAY_NAMES
 from helpdesk_be.models.ticket import Ticket
 from helpdesk_be.models.ticket_comment import TicketComment
 from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
@@ -1358,8 +1359,9 @@ def test_unassign_ticket_with_commit_error(
 # ====================================================================
 
 # リクエストの形式
-# PUT → リクエストボディ(json)でstatus/status_display_name(すべて必須)を送る。表示名はFEが管理し、
-#       対応履歴のcontentにそのまま使われる
+# PUT → リクエストボディ(json)でstatus(必須)を送る。対応履歴のcontentに使う表示名は
+#       クライアントからは受け取らず、BE側のTICKET_STATUS_DISPLAY_NAMES(logic/business/
+#       ticket_status_display_name.py)から求める(クライアントに任意の文字列を履歴に残させないため)
 # レスポンスの形式
 # 200 → 変更成功（id/status/updated_atを返す）
 # 403 → 自分が担当していないSUPPORT、または社員でログイン中
@@ -1374,18 +1376,8 @@ def test_unassign_ticket_with_commit_error(
 # のため、ここでは重複してテストしない
 
 
-# ステータスの表示名はFEが管理しているものと同じ値を使う
-STATUS_DISPLAY_NAMES: dict[TicketStatusType, str] = {
-    TicketStatusType.NEW_QUESTION: "新規質問",
-    TicketStatusType.ASSIGNED: "担当者アサイン済み",
-    TicketStatusType.IN_PROGRESS: "対応中",
-    TicketStatusType.RESOLVED: "解決済み",
-    TicketStatusType.CLOSED: "クローズ",
-}
-
-
 # 正常系のテスト（自分が担当しているSUPPORTが許可された遷移を行うと200、
-# チケットのステータスが更新され、対応履歴にstatus_display_nameを使ったシステム履歴が追加される）
+# チケットのステータスが更新され、対応履歴にBE側で求めた表示名を使ったシステム履歴が追加される）
 # 遷移ルールの網羅的な組み合わせはlogic/business/test_ticket_status_transition.pyで単体テスト済みのため、
 # ここではcurrent_statusごとに代表的な1パターンのみ確認する
 @pytest.mark.parametrize(
@@ -1419,11 +1411,11 @@ def test_update_ticket_status_success(
         support_user_id=support_user.id,
         status=current_status,
     )
-    next_status_display_name = STATUS_DISPLAY_NAMES[next_status]
+    next_status_display_name = TICKET_STATUS_DISPLAY_NAMES[next_status]
 
     response = client.put(
         f"/api/v1/tickets/{ticket.id}/status",
-        json={"status": next_status.value, "statusDisplayName": next_status_display_name},
+        json={"status": next_status.value},
     )
 
     assert response.status_code == 200
@@ -1438,6 +1430,42 @@ def test_update_ticket_status_success(
     ).scalar_one()
     assert comment.created_by_user_id == support_user.id
     assert comment.content == f"ステータスを「{next_status_display_name}」に変更しました"
+
+
+# ------------------------
+
+# 準正常系のテスト
+# statusDisplayNameはリクエストスキーマに存在しないため、クライアントが任意の文字列を付けて送っても
+# 無視され、対応履歴にはBE側のTICKET_STATUS_DISPLAY_NAMESから求めた値が使われる
+def test_update_ticket_status_ignores_client_provided_status_display_name(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    support_user = create_user_and_login(
+        db_session, client, name="担当花子", email="support@example.com", role=UserRoleType.SUPPORT
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user.id,
+        status=TicketStatusType.ASSIGNED,
+    )
+
+    response = client.put(
+        f"/api/v1/tickets/{ticket.id}/status",
+        json={
+            "status": TicketStatusType.IN_PROGRESS.value,
+            "statusDisplayName": "<script>alert(1)</script>",
+        },
+    )
+
+    assert response.status_code == 200
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    expected_display_name = TICKET_STATUS_DISPLAY_NAMES[TicketStatusType.IN_PROGRESS]
+    assert comment.content == f"ステータスを「{expected_display_name}」に変更しました"
 
 
 # ------------------------
@@ -1466,7 +1494,7 @@ def test_update_ticket_status_with_admin_returns_200_and_masks_commenter_name(
 
     response = client.put(
         f"/api/v1/tickets/{ticket.id}/status",
-        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+        json={"status": TicketStatusType.IN_PROGRESS.value},
     )
 
     assert response.status_code == 200
@@ -1519,7 +1547,7 @@ def test_update_ticket_status_with_non_owner_returns_403(
 
     response = client.put(
         f"/api/v1/tickets/{ticket.id}/status",
-        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+        json={"status": TicketStatusType.IN_PROGRESS.value},
     )
 
     assert response.status_code == 403
@@ -1538,7 +1566,7 @@ def test_update_ticket_status_with_nonexistent_ticket_returns_404(
 
     response = client.put(
         "/api/v1/tickets/9999/status",
-        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+        json={"status": TicketStatusType.IN_PROGRESS.value},
     )
 
     assert response.status_code == 404
@@ -1581,7 +1609,7 @@ def test_update_ticket_status_with_disallowed_transition_returns_422(
 
     response = client.put(
         f"/api/v1/tickets/{ticket.id}/status",
-        json={"status": next_status.value, "statusDisplayName": "対応中"},
+        json={"status": next_status.value},
     )
 
     assert response.status_code == 422
@@ -1612,7 +1640,7 @@ def test_update_ticket_status_with_commit_error(
 
     response = client_with_commit_error.put(
         f"/api/v1/tickets/{ticket.id}/status",
-        json={"status": TicketStatusType.IN_PROGRESS.value, "statusDisplayName": "対応中"},
+        json={"status": TicketStatusType.IN_PROGRESS.value},
     )
 
     assert response.status_code == 500
