@@ -36,3 +36,17 @@ def test_get_ticket_status_display_name_returns_japanese_name(
 )
 def test_ticket_status_display_names_covers_all_statuses(status: TicketStatusType) -> None:
     assert status in TICKET_STATUS_DISPLAY_NAMES
+
+
+# ---------------------------------------------------------------------------------------
+
+
+# 表示名の定義が漏れているステータスを渡すとKeyErrorになる
+def test_get_ticket_status_display_name_raises_key_error_when_definition_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # 現状は全ステータス定義済みでKeyErrorを起こせないため、定義漏れをテスト内だけで人工的に再現する
+    monkeypatch.delitem(TICKET_STATUS_DISPLAY_NAMES, TicketStatusType.NEW_QUESTION)
+
+    with pytest.raises(KeyError):
+        get_ticket_status_display_name(TicketStatusType.NEW_QUESTION)
