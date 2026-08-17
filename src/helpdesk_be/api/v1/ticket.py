@@ -151,30 +151,16 @@ def list_ticket_comments(
     comments = get_comments_with_users_by_ticket_id(session, ticket.id)
 
     # TicketCommentモデルのリストをレスポンススキーマへ変換する。
-    # commenterはコメントの投稿者(User)とのリレーションで、その名前をcommenter_nameとして詰め替えている。
-    # 投稿者がいない行(created_by_user_id=NULL)は担当者割り当て等でシステムが自動登録した履歴のため、
-    # 対応者は"system"と表示する。
-    # 投稿者がADMINの場合は個人名を出さず「管理者」と匿名化する(実際の投稿者IDはcreated_by_user_idに
-    # 保持されるためDB上では追跡可能。加えて操作時にアプリケーションログへ実名を出力する箇所もある)
-    result = []
-    for comment in comments:
-        if comment.commenter is None:
-            commenter_name = "system"
-        elif comment.commenter.role == UserRoleType.ADMIN:
-            commenter_name = "管理者"
-        else:
-            commenter_name = comment.commenter.name
-
-        result.append(
-            GetTicketCommentsResponseItem(
-                id=comment.id,
-                content=comment.content,
-                commenter_name=commenter_name,
-                created_at=comment.created_at,
-            )
+    # commenter_nameの表示ルール(system/管理者への匿名化)はcommenter_display_name()側を参照
+    return [
+        GetTicketCommentsResponseItem(
+            id=comment.id,
+            content=comment.content,
+            commenter_name=comment.commenter_display_name(),
+            created_at=comment.created_at,
         )
-
-    return result
+        for comment in comments
+    ]
 
 
 # ------------------------
@@ -370,12 +356,6 @@ def update_ticket_status(
         session.rollback()
         logger.error(f"failed to update ticket status {e}")
         raise e
-
-    # 対応履歴の一覧表示上は管理者操作を「管理者」と匿名化するため、
-    # 誰が操作したかをアプリケーションログには名前入りで残す
-    logger.info(
-        f"ticket status updated: ticket_id={ticket.id} by user_id={user.id} name={user.name}"
-    )
 
     return UpdateTicketStatusResponse(
         id=ticket.id, status=ticket.status, updated_at=ticket.updated_at
