@@ -1714,13 +1714,16 @@ def test_update_ticket_status_with_commit_error(
 
 
 # 正常系のテスト（ADMIN/SUPPORTは担当の有無を問わず非公開チケットを公開にでき、
-# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される）
+# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される。
+# 対応履歴一覧APIでは、投稿者がADMINの場合のみ個人名ではなく「管理者」と表示される
+# (commenter_display_name()による匿名化。TicketComment.created_by_user_id自体は
+#  ログインユーザー本人のIDのまま)
 @pytest.mark.parametrize(
-    ("login_role", "assign_to_self"),
+    ("login_role", "assign_to_self", "expected_commenter_name"),
     [
-        pytest.param(UserRoleType.ADMIN, False, id="admin"),
-        pytest.param(UserRoleType.SUPPORT, False, id="unassigned_support"),
-        pytest.param(UserRoleType.SUPPORT, True, id="assigned_support"),
+        pytest.param(UserRoleType.ADMIN, False, "管理者", id="admin"),
+        pytest.param(UserRoleType.SUPPORT, False, "test", id="unassigned_support"),
+        pytest.param(UserRoleType.SUPPORT, True, "test", id="assigned_support"),
     ],
 )
 def test_publish_ticket_success(
@@ -1728,6 +1731,7 @@ def test_publish_ticket_success(
     db_session: Session,
     login_role: UserRoleType,
     assign_to_self: bool,
+    expected_commenter_name: str,
 ) -> None:
     questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
     login_user = create_user_and_login(db_session, client, role=login_role)
@@ -1755,31 +1759,8 @@ def test_publish_ticket_success(
     assert comment.created_by_user_id == login_user.id
     assert comment.content == "公開設定を「公開」に変更しました"
 
-
-# ------------------------
-
-# 準正常系のテスト
-# 管理者は自分が担当していないチケットでも公開にできる。ただし対応履歴一覧では
-# 個人名ではなく「管理者」と表示される
-
-
-def test_publish_ticket_with_admin_returns_200_and_masks_commenter_name(
-    client: TestClient, db_session: Session
-) -> None:
-    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
-    create_user_and_login(db_session, client, name="管理花子", role=UserRoleType.ADMIN)
-    ticket = create_ticket(
-        db_session,
-        created_by_user_id=questioner.id,
-        visibility=TicketVisibilityType.PRIVATE,
-    )
-
-    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
-
-    assert response.status_code == 200
-
     comments_response = client.get(f"/api/v1/tickets/{ticket.id}/comments")
-    assert comments_response.json()[0]["commenterName"] == "管理者"
+    assert comments_response.json()[0]["commenterName"] == expected_commenter_name
 
 
 # ------------------------
@@ -1847,11 +1828,11 @@ def test_publish_ticket_with_already_public_ticket_returns_422(
 # ------------------------
 
 # 異常系のテスト
-# 変更権限がないユーザーが、既に公開設定のチケットに対して操作した場合も、
-# 権限チェックより状態チェックを先に行うため422(no-op)になる(403にはならない)
+# 変更権限がないユーザーが、既に公開設定のチケットに対して操作した場合、
+# 状態チェックより権限チェックを先に行うため403になる(422にはならない)
 
 
-def test_publish_ticket_with_questioner_on_already_public_ticket_returns_422(
+def test_publish_ticket_with_questioner_on_already_public_ticket_returns_403(
     client: TestClient, db_session: Session
 ) -> None:
     questioner = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
@@ -1861,8 +1842,7 @@ def test_publish_ticket_with_questioner_on_already_public_ticket_returns_422(
 
     response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
 
-    assert response.status_code == 422
-    assert response.json()["type"] == "BUSINESS_ERROR"
+    assert response.status_code == 403
 
 
 # ------------------------
@@ -1924,14 +1904,17 @@ def test_publish_ticket_with_commit_error(
 
 
 # 正常系のテスト（ADMIN/SUPPORTは担当の有無を問わず、質問者本人も公開チケットを非公開にでき、
-# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される）
+# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される。
+# 対応履歴一覧APIでは、投稿者がADMINの場合のみ個人名ではなく「管理者」と表示される
+# (commenter_display_name()による匿名化。TicketComment.created_by_user_id自体は
+#  ログインユーザー本人のIDのまま)
 @pytest.mark.parametrize(
-    ("login_role", "login_as_questioner", "assign_to_self"),
+    ("login_role", "login_as_questioner", "assign_to_self", "expected_commenter_name"),
     [
-        pytest.param(UserRoleType.ADMIN, False, False, id="admin"),
-        pytest.param(UserRoleType.SUPPORT, False, False, id="unassigned_support"),
-        pytest.param(UserRoleType.SUPPORT, False, True, id="assigned_support"),
-        pytest.param(UserRoleType.EMPLOYEE, True, False, id="questioner"),
+        pytest.param(UserRoleType.ADMIN, False, False, "管理者", id="admin"),
+        pytest.param(UserRoleType.SUPPORT, False, False, "test", id="unassigned_support"),
+        pytest.param(UserRoleType.SUPPORT, False, True, "test", id="assigned_support"),
+        pytest.param(UserRoleType.EMPLOYEE, True, False, "test", id="questioner"),
     ],
 )
 def test_unpublish_ticket_success(
@@ -1940,6 +1923,7 @@ def test_unpublish_ticket_success(
     login_role: UserRoleType,
     login_as_questioner: bool,
     assign_to_self: bool,
+    expected_commenter_name: str,
 ) -> None:
     if login_as_questioner:
         login_user = create_user_and_login(db_session, client, role=login_role)
@@ -1973,31 +1957,8 @@ def test_unpublish_ticket_success(
     assert comment.created_by_user_id == login_user.id
     assert comment.content == "公開設定を「非公開」に変更しました"
 
-
-# ------------------------
-
-# 準正常系のテスト
-# 管理者は自分が担当していないチケットでも非公開にできる。ただし対応履歴一覧では
-# 個人名ではなく「管理者」と表示される
-
-
-def test_unpublish_ticket_with_admin_returns_200_and_masks_commenter_name(
-    client: TestClient, db_session: Session
-) -> None:
-    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
-    create_user_and_login(db_session, client, name="管理花子", role=UserRoleType.ADMIN)
-    ticket = create_ticket(
-        db_session,
-        created_by_user_id=questioner.id,
-        visibility=TicketVisibilityType.PUBLIC,
-    )
-
-    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
-
-    assert response.status_code == 200
-
     comments_response = client.get(f"/api/v1/tickets/{ticket.id}/comments")
-    assert comments_response.json()[0]["commenterName"] == "管理者"
+    assert comments_response.json()[0]["commenterName"] == expected_commenter_name
 
 
 # ------------------------
