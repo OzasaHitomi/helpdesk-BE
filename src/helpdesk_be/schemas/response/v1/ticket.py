@@ -67,3 +67,17 @@ class UpdateTicketStatusResponse(BaseV1ResponseSchema):
     id: int
     status: TicketStatusType
     updated_at: datetime
+
+
+# チケット公開化APIのレスポンス
+class PublishTicketResponse(BaseV1ResponseSchema):
+    id: int
+    visibility: TicketVisibilityType
+    updated_at: datetime
+
+
+# チケット非公開化APIのレスポンス
+class UnpublishTicketResponse(BaseV1ResponseSchema):
+    id: int
+    visibility: TicketVisibilityType
+    updated_at: datetime
