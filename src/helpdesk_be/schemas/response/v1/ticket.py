@@ -39,6 +39,7 @@ class GetTicketResponse(BaseV1ResponseSchema):
     detail: str
     visibility: TicketVisibilityType
     status: TicketStatusType
+    created_by_user_id: int
     support_user_id: int | None
     support_user_name: str | None
     created_at: datetime

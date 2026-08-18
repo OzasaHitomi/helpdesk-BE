@@ -133,6 +133,7 @@ def get_ticket(
         detail=ticket.detail,
         visibility=ticket.visibility,
         status=ticket.status,
+        created_by_user_id=ticket.created_by_user_id,
         support_user_id=ticket.support_user_id,
         support_user_name=ticket.support_user.name if ticket.support_user else None,
         created_at=ticket.created_at,

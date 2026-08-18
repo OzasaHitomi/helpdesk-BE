@@ -575,6 +575,25 @@ def test_get_ticket_with_nonexistent_id_returns_404(
 
 # ------------------
 
+# 質問者のuser_idが返却されることの確認
+# (FE側でログインユーザーとチケット作成者の一致判定に使用するため)
+
+
+def test_get_ticket_returns_created_by_user_id(client: TestClient, db_session: Session) -> None:
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=creator.id, visibility=TicketVisibilityType.PUBLIC
+    )
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    assert response.status_code == 200
+    assert response.json()["createdByUserId"] == creator.id
+
+
+# ------------------
+
 # 担当者の有無によってsupport_user_id/support_user_nameの値が変わることの確認
 # (未割当てはNone、割当て済みは担当者のid/名前になる)
 
