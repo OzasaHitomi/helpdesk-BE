@@ -1828,6 +1828,27 @@ def test_publish_ticket_with_already_public_ticket_returns_422(
 # ------------------------
 
 # 異常系のテスト
+# 変更権限がないユーザーが、既に公開設定のチケットに対して操作した場合も、
+# 権限チェックより状態チェックを先に行うため422(no-op)になる(403にはならない)
+
+
+def test_publish_ticket_with_questioner_on_already_public_ticket_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PUBLIC
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
 # 存在しないticket_idを指定した場合は404
 
 
@@ -1993,6 +2014,28 @@ def test_unpublish_ticket_with_already_private_ticket_returns_422(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
     questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PRIVATE
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 変更権限がないユーザーが、既に非公開設定のチケットに対して操作した場合も、
+# 権限チェックより状態チェックを先に行うため422(no-op)になる(403にはならない)
+
+
+def test_unpublish_ticket_with_non_questioner_employee_on_already_private_ticket_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    create_user_and_login(db_session, client, name="社員B", role=UserRoleType.EMPLOYEE)
     ticket = create_ticket(
         db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PRIVATE
     )
