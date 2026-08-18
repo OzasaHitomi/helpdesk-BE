@@ -385,19 +385,20 @@ def publish_ticket(
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db)],
 ) -> PublishTicketResponse:
+    # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)のみ変更可能。
+    #     質問者は非公開->公開に変更できない(unpublish側のみ許可) ---
+    if user.role not in (UserRoleType.ADMIN, UserRoleType.SUPPORT):
+        raise ForbiddenException("サポート担当、または管理者のみ公開設定を変更できます")
+    
     # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
     ticket = get_ticket_by_id(session, ticket_id)
     if ticket is None:
         raise NotFoundException("チケットが見つかりません")
 
     # --- 状態チェック: すでに公開の場合は無意味な操作として422(BusinessException)を返す ---
-    if ticket.visibility == TicketVisibilityType.PUBLIC:
-        raise BusinessException("既に公開設定です")
+    if ticket.visibility == TicketVisibilityType.PRIVATE:
+        raise BusinessException("既に非公開設定です")
 
-    # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)のみ変更可能。
-    #     質問者は非公開->公開に変更できない(unpublish側のみ許可) ---
-    if user.role not in (UserRoleType.ADMIN, UserRoleType.SUPPORT):
-        raise ForbiddenException("サポート担当、または管理者のみ公開設定を変更できます")
 
     # --- 更新処理: 公開設定を更新し、対応履歴にシステム履歴を追加する
     #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする)
@@ -437,8 +438,8 @@ def unpublish_ticket(
         raise NotFoundException("チケットが見つかりません")
 
     # --- 状態チェック: すでに非公開の場合は無意味な操作として422(BusinessException)を返す ---
-    if ticket.visibility == TicketVisibilityType.PRIVATE:
-        raise BusinessException("既に非公開設定です")
+    if ticket.visibility == TicketVisibilityType.PUBLIC:
+        raise BusinessException("既に公開設定です")
 
     # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)、または質問者本人のみ変更可能 ---
     is_admin_or_support = user.role in (UserRoleType.ADMIN, UserRoleType.SUPPORT)
