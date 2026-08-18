@@ -575,6 +575,25 @@ def test_get_ticket_with_nonexistent_id_returns_404(
 
 # ------------------
 
+# 質問者のuser_idが返却されることの確認
+# (FE側でログインユーザーとチケット作成者の一致判定に使用するため)
+
+
+def test_get_ticket_returns_created_by_user_id(client: TestClient, db_session: Session) -> None:
+    creator = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=creator.id, visibility=TicketVisibilityType.PUBLIC
+    )
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.get(f"/api/v1/tickets/{ticket.id}")
+
+    assert response.status_code == 200
+    assert response.json()["createdByUserId"] == creator.id
+
+
+# ------------------
+
 # 担当者の有無によってsupport_user_id/support_user_nameの値が変わることの確認
 # (未割当てはNone、割当て済みは担当者のid/名前になる)
 
@@ -1672,6 +1691,378 @@ def test_update_ticket_status_with_commit_error(
         f"/api/v1/tickets/{ticket.id}/status",
         json={"status": TicketStatusType.IN_PROGRESS.value},
     )
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
+
+
+# ====================================================================
+# PUT /tickets/{ticket_id}/publish
+# ====================================================================
+
+# リクエストの形式
+# PUT → リクエストボディなし。対象チケットは常にPUBLICに変更される
+# レスポンスの形式
+# 200 → 変更成功（id/visibility/updated_atを返す）
+# 403 → ADMIN/SUPPORT以外(質問者本人を含む)でログイン中
+# 404 → 存在しないticket_id
+# 422 → 既に公開設定の場合(no-op、type="BUSINESS_ERROR")
+# 500 → DB更新処理自体が失敗（コミットエラー）
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 正常系のテスト（ADMIN/SUPPORTは担当の有無を問わず非公開チケットを公開にでき、
+# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される。
+# 対応履歴一覧APIでは、投稿者がADMINの場合のみ個人名ではなく「管理者」と表示される
+# (commenter_display_name()による匿名化。TicketComment.created_by_user_id自体は
+#  ログインユーザー本人のIDのまま)
+@pytest.mark.parametrize(
+    ("login_role", "assign_to_self", "expected_commenter_name"),
+    [
+        pytest.param(UserRoleType.ADMIN, False, "管理者", id="admin"),
+        pytest.param(UserRoleType.SUPPORT, False, "test", id="unassigned_support"),
+        pytest.param(UserRoleType.SUPPORT, True, "test", id="assigned_support"),
+    ],
+)
+def test_publish_ticket_success(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+    assign_to_self: bool,
+    expected_commenter_name: str,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    login_user = create_user_and_login(db_session, client, role=login_role)
+    # assign_to_selfがTrueならログインユーザーを担当者として割り当てる
+    support_user_id = login_user.id if assign_to_self else None
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        support_user_id=support_user_id,
+        visibility=TicketVisibilityType.PRIVATE,
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["visibility"] == TicketVisibilityType.PUBLIC.value
+
+    db_session.refresh(ticket)
+    assert ticket.visibility == TicketVisibilityType.PUBLIC
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    assert comment.created_by_user_id == login_user.id
+    assert comment.content == "公開設定を「公開」に変更しました"
+
+    comments_response = client.get(f"/api/v1/tickets/{ticket.id}/comments")
+    assert comments_response.json()[0]["commenterName"] == expected_commenter_name
+
+
+# ------------------------
+
+# 異常系のテスト
+# 質問者本人を含むADMIN/SUPPORT以外は変更できない
+
+
+def test_publish_ticket_with_questioner_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        visibility=TicketVisibilityType.PRIVATE,
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+
+# 質問者本人以外の社員も変更できない
+def test_publish_ticket_with_non_questioner_employee_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    create_user_and_login(db_session, client, name="社員B", role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        visibility=TicketVisibilityType.PRIVATE,
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+# 異常系のテスト
+# 既に公開設定の場合は422(no-opは無意味な操作として拒否する)
+
+
+def test_publish_ticket_with_already_public_ticket_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PUBLIC
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 変更権限がないユーザーが、既に公開設定のチケットに対して操作した場合、
+# 状態チェックより権限チェックを先に行うため403になる(422にはならない)
+
+
+def test_publish_ticket_with_questioner_on_already_public_ticket_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PUBLIC
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+# 異常系のテスト
+# 存在しないticket_idを指定した場合は404
+
+
+def test_publish_ticket_with_nonexistent_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+
+    response = client.put("/api/v1/tickets/9999/publish")
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+# 異常系のテスト
+# DBへの更新自体が失敗した場合はrollbackされ、500が返る
+
+
+def test_publish_ticket_with_commit_error(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    create_user_and_login(db_session, client_with_commit_error, role=UserRoleType.SUPPORT)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        visibility=TicketVisibilityType.PRIVATE,
+    )
+
+    response = client_with_commit_error.put(f"/api/v1/tickets/{ticket.id}/publish")
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
+
+
+# ====================================================================
+# PUT /tickets/{ticket_id}/unpublish
+# ====================================================================
+
+# リクエストの形式
+# PUT → リクエストボディなし。対象チケットは常にPRIVATEに変更される
+# レスポンスの形式
+# 200 → 変更成功（id/visibility/updated_atを返す）
+# 403 → 質問者ではない社員でログイン中
+# 404 → 存在しないticket_id
+# 422 → 既に非公開設定の場合(no-op、type="BUSINESS_ERROR")
+# 500 → DB更新処理自体が失敗（コミットエラー）
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 正常系のテスト（ADMIN/SUPPORTは担当の有無を問わず、質問者本人も公開チケットを非公開にでき、
+# 対応履歴に固定文言のシステム履歴が投稿者本人として追加される。
+# 対応履歴一覧APIでは、投稿者がADMINの場合のみ個人名ではなく「管理者」と表示される
+# (commenter_display_name()による匿名化。TicketComment.created_by_user_id自体は
+#  ログインユーザー本人のIDのまま)
+@pytest.mark.parametrize(
+    ("login_role", "login_as_questioner", "assign_to_self", "expected_commenter_name"),
+    [
+        pytest.param(UserRoleType.ADMIN, False, False, "管理者", id="admin"),
+        pytest.param(UserRoleType.SUPPORT, False, False, "test", id="unassigned_support"),
+        pytest.param(UserRoleType.SUPPORT, False, True, "test", id="assigned_support"),
+        pytest.param(UserRoleType.EMPLOYEE, True, False, "test", id="questioner"),
+    ],
+)
+def test_unpublish_ticket_success(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+    login_as_questioner: bool,
+    assign_to_self: bool,
+    expected_commenter_name: str,
+) -> None:
+    if login_as_questioner:
+        login_user = create_user_and_login(db_session, client, role=login_role)
+        ticket = create_ticket(
+            db_session, created_by_user_id=login_user.id, visibility=TicketVisibilityType.PUBLIC
+        )
+    else:
+        questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+        login_user = create_user_and_login(db_session, client, role=login_role)
+        # assign_to_selfがTrueならログインユーザーを担当者として割り当てる
+        support_user_id = login_user.id if assign_to_self else None
+        ticket = create_ticket(
+            db_session,
+            created_by_user_id=questioner.id,
+            support_user_id=support_user_id,
+            visibility=TicketVisibilityType.PUBLIC,
+        )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["visibility"] == TicketVisibilityType.PRIVATE.value
+
+    db_session.refresh(ticket)
+    assert ticket.visibility == TicketVisibilityType.PRIVATE
+
+    comment = db_session.execute(
+        select(TicketComment).where(TicketComment.ticket_id == ticket.id)
+    ).scalar_one()
+    assert comment.created_by_user_id == login_user.id
+    assert comment.content == "公開設定を「非公開」に変更しました"
+
+    comments_response = client.get(f"/api/v1/tickets/{ticket.id}/comments")
+    assert comments_response.json()[0]["commenterName"] == expected_commenter_name
+
+
+# ------------------------
+
+# 異常系のテスト
+# 質問者ではない社員は変更できない
+
+
+def test_unpublish_ticket_with_non_questioner_employee_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    create_user_and_login(db_session, client, name="社員B", role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        visibility=TicketVisibilityType.PUBLIC,
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
+
+    assert response.status_code == 403
+
+
+# ------------------------
+
+# 異常系のテスト
+# 既に非公開設定の場合は422(no-opは無意味な操作として拒否する)
+
+
+def test_unpublish_ticket_with_already_private_ticket_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PRIVATE
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 変更権限がないユーザーが、既に非公開設定のチケットに対して操作した場合も、
+# 権限チェックより状態チェックを先に行うため422(no-op)になる(403にはならない)
+
+
+def test_unpublish_ticket_with_non_questioner_employee_on_already_private_ticket_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    questioner = create_user(db_session, name="社員A", email="employee_a@example.com")
+    create_user_and_login(db_session, client, name="社員B", role=UserRoleType.EMPLOYEE)
+    ticket = create_ticket(
+        db_session, created_by_user_id=questioner.id, visibility=TicketVisibilityType.PRIVATE
+    )
+
+    response = client.put(f"/api/v1/tickets/{ticket.id}/unpublish")
+
+    assert response.status_code == 422
+    assert response.json()["type"] == "BUSINESS_ERROR"
+
+
+# ------------------------
+
+# 異常系のテスト
+# 存在しないticket_idを指定した場合は404
+
+
+def test_unpublish_ticket_with_nonexistent_ticket_returns_404(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+
+    response = client.put("/api/v1/tickets/9999/unpublish")
+
+    assert response.status_code == 404
+
+
+# ------------------------
+
+# 異常系のテスト
+# DBへの更新自体が失敗した場合はrollbackされ、500が返る
+
+
+def test_unpublish_ticket_with_commit_error(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    questioner = create_user_and_login(
+        db_session, client_with_commit_error, role=UserRoleType.EMPLOYEE
+    )
+    ticket = create_ticket(
+        db_session,
+        created_by_user_id=questioner.id,
+        visibility=TicketVisibilityType.PUBLIC,
+    )
+
+    response = client_with_commit_error.put(f"/api/v1/tickets/{ticket.id}/unpublish")
 
     assert response.status_code == 500
     assert rollback_tracker.called is True

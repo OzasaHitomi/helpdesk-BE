@@ -17,14 +17,19 @@ from helpdesk_be.models.ticket_comment import TicketComment
 from helpdesk_be.models.user import User
 from helpdesk_be.repositories.ticket import get_ticket_by_id, get_tickets_with_users
 from helpdesk_be.repositories.ticket_comment import get_comments_with_users_by_ticket_id
-from helpdesk_be.schemas.request.v1.ticket import CreateTicketRequest, UpdateTicketStatusRequest
+from helpdesk_be.schemas.request.v1.ticket import (
+    CreateTicketRequest,
+    UpdateTicketStatusRequest,
+)
 from helpdesk_be.schemas.request.v1.ticket_comment import CreateTicketCommentRequest
 from helpdesk_be.schemas.response.v1.ticket import (
     AssignTicketResponse,
     CreateTicketResponse,
     GetTicketResponse,
     GetTicketsResponseItem,
+    PublishTicketResponse,
     UnassignTicketResponse,
+    UnpublishTicketResponse,
     UpdateTicketStatusResponse,
 )
 from helpdesk_be.schemas.response.v1.ticket_comment import (
@@ -32,6 +37,7 @@ from helpdesk_be.schemas.response.v1.ticket_comment import (
     GetTicketCommentsResponseItem,
 )
 from helpdesk_be.store.enum.ticket_status_type import TicketStatusType
+from helpdesk_be.store.enum.ticket_visibility_type import TicketVisibilityType
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 
 router = APIRouter()
@@ -127,6 +133,7 @@ def get_ticket(
         detail=ticket.detail,
         visibility=ticket.visibility,
         status=ticket.status,
+        created_by_user_id=ticket.created_by_user_id,
         support_user_id=ticket.support_user_id,
         support_user_name=ticket.support_user.name if ticket.support_user else None,
         created_at=ticket.created_at,
@@ -366,4 +373,99 @@ def update_ticket_status(
 
     return UpdateTicketStatusResponse(
         id=ticket.id, status=ticket.status, updated_at=ticket.updated_at
+    )
+
+
+# ------------------------
+
+
+# 非公開 → 公開
+@router.put("/{ticket_id}/publish", response_model=PublishTicketResponse)
+def publish_ticket(
+    ticket_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> PublishTicketResponse:
+    # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)のみ変更可能。
+    #     質問者は非公開->公開に変更できない(unpublish側のみ許可) ---
+    if user.role not in (UserRoleType.ADMIN, UserRoleType.SUPPORT):
+        raise ForbiddenException("サポート担当、または管理者のみ公開設定を変更できます")
+
+    # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
+    ticket = get_ticket_by_id(session, ticket_id)
+    if ticket is None:
+        raise NotFoundException("チケットが見つかりません")
+
+    # --- 状態チェック: すでに公開の場合は無意味な操作として422(BusinessException)を返す ---
+    if ticket.visibility == TicketVisibilityType.PUBLIC:
+        raise BusinessException("既に公開設定です")
+
+    # --- 更新処理: 公開設定を更新し、対応履歴にシステム履歴を追加する
+    #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする)
+    #     対象visibilityはPUBLIC固定のため、表示名はクライアント入力を経由せずベタ書きする ---
+    ticket.visibility = TicketVisibilityType.PUBLIC
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content="公開設定を「公開」に変更しました",
+        created_by_user_id=user.id,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to publish ticket {e}")
+        raise e
+
+    return PublishTicketResponse(
+        id=ticket.id, visibility=ticket.visibility, updated_at=ticket.updated_at
+    )
+
+
+# ------------------------
+
+
+# 公開 → 非公開
+@router.put("/{ticket_id}/unpublish", response_model=UnpublishTicketResponse)
+def unpublish_ticket(
+    ticket_id: int,
+    user: Annotated[User, Depends(get_current_user)],
+    session: Annotated[Session, Depends(get_db)],
+) -> UnpublishTicketResponse:
+    # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
+    ticket = get_ticket_by_id(session, ticket_id)
+    if ticket is None:
+        raise NotFoundException("チケットが見つかりません")
+
+    # --- 状態チェック: すでに非公開の場合は無意味な操作として422(BusinessException)を返す ---
+    if ticket.visibility == TicketVisibilityType.PRIVATE:
+        raise BusinessException("既に非公開設定です")
+
+    # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)、または質問者本人のみ変更可能 ---
+    is_admin_or_support = user.role in (UserRoleType.ADMIN, UserRoleType.SUPPORT)
+    is_questioner = ticket.created_by_user_id == user.id
+    if not is_admin_or_support and not is_questioner:
+        raise ForbiddenException("質問者、サポート担当、または管理者のみ公開設定を変更できます")
+
+    # --- 更新処理: 公開設定を更新し、対応履歴にシステム履歴を追加する
+    #     (Ticketの更新とTicketCommentの追加を同一トランザクションでコミットする)
+    #     対象visibilityはPRIVATE固定のため、表示名はクライアント入力を経由せずベタ書きする ---
+    ticket.visibility = TicketVisibilityType.PRIVATE
+
+    new_comment = TicketComment(
+        ticket_id=ticket.id,
+        content="公開設定を「非公開」に変更しました",
+        created_by_user_id=user.id,
+    )
+    session.add(new_comment)
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to unpublish ticket {e}")
+        raise e
+
+    return UnpublishTicketResponse(
+        id=ticket.id, visibility=ticket.visibility, updated_at=ticket.updated_at
     )
