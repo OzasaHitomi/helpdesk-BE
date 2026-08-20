@@ -25,7 +25,7 @@ def test_list_users_returns_empty_items_when_no_target_accounts_exist(
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     assert response.status_code == 200
     assert response.json() == []
@@ -50,7 +50,7 @@ def test_list_users_excludes_admin_accounts_and_includes_only_employee_and_suppo
         db_session, name="サポート次郎", email="support@example.com", role=UserRoleType.SUPPORT
     )
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     names_and_roles = {(item["name"], item["role"]) for item in response.json()}
     assert names_and_roles == {
@@ -73,7 +73,7 @@ def test_list_users_includes_account_fields(client: TestClient, db_session: Sess
         role=UserRoleType.SUPPORT,
     )
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     item = response.json()[0]
     assert item["name"] == "サポート次郎"
@@ -99,7 +99,7 @@ def test_list_users_includes_inactive_accounts_with_is_active_false(
         is_active=False,
     )
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     item = response.json()[0]
     assert item["isActive"] is False
@@ -115,7 +115,7 @@ def test_list_users_includes_inactive_accounts_with_is_active_false(
 def test_list_users_with_employee_role_returns_403(client: TestClient, db_session: Session) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     assert response.status_code == 403
     assert response.json()["detail"] == "管理者のみこの操作を実行できます"
@@ -128,7 +128,7 @@ def test_list_users_with_employee_role_returns_403(client: TestClient, db_sessio
 def test_list_users_with_support_role_returns_403(client: TestClient, db_session: Session) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
 
-    response = client.get("/api/v1/users")
+    response = client.get("/api/v1/admin/users")
 
     assert response.status_code == 403
     assert response.json()["detail"] == "管理者のみこの操作を実行できます"

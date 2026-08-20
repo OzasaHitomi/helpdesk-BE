@@ -127,13 +127,8 @@ def test_get_user_by_id_returns_none_when_id_does_not_match_existing_user(
 def test_get_employee_and_support_users_excludes_admin_accounts(
     db_session: Session,
 ) -> None:
-    # 管理者(ログイン中管理者・別の管理者)は一覧に含まれず、社員・サポートのみ取得できることを確認する
-    create_user(
-        db_session, name="ログイン中管理者", email="admin_self@example.com", role=UserRoleType.ADMIN
-    )
-    create_user(
-        db_session, name="別の管理者", email="admin_other@example.com", role=UserRoleType.ADMIN
-    )
+    # 管理者ロールのユーザーは一覧に含まれず、社員・サポートのみ取得できることを確認する
+    create_user(db_session, name="管理者", email="admin@example.com", role=UserRoleType.ADMIN)
     employee = create_user(
         db_session, name="社員太郎", email="employee@example.com", role=UserRoleType.EMPLOYEE
     )
