@@ -1,6 +1,13 @@
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
 from sqlalchemy.orm import Session
 
-from helpdesk_be.repositories.user import get_user_by_email, get_user_by_id
+from helpdesk_be.repositories.user import (
+    get_employee_and_support_users,
+    get_user_by_email,
+    get_user_by_id,
+)
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 from tests.factories.user_factory import create_user
 
@@ -110,3 +117,70 @@ def test_get_user_by_id_returns_none_when_id_does_not_match_existing_user(
     result = get_user_by_id(db_session, user.id + 1)
 
     assert result is None
+
+
+# ====================================================================
+# get_employee_and_support_users
+# ====================================================================
+
+
+def test_get_employee_and_support_users_excludes_admin_accounts(
+    db_session: Session,
+) -> None:
+    # 管理者(ログイン中管理者・別の管理者)は一覧に含まれず、社員・サポートのみ取得できることを確認する
+    create_user(
+        db_session, name="ログイン中管理者", email="admin_self@example.com", role=UserRoleType.ADMIN
+    )
+    create_user(
+        db_session, name="別の管理者", email="admin_other@example.com", role=UserRoleType.ADMIN
+    )
+    employee = create_user(
+        db_session, name="社員太郎", email="employee@example.com", role=UserRoleType.EMPLOYEE
+    )
+    support = create_user(
+        db_session, name="サポート花子", email="support@example.com", role=UserRoleType.SUPPORT
+    )
+
+    result = get_employee_and_support_users(db_session)
+
+    ids = {user.id for user in result}
+    assert ids == {employee.id, support.id}
+
+
+# ---------------------------------------------------------------------------------------
+
+
+def test_get_employee_and_support_users_orders_by_created_at_desc(db_session: Session) -> None:
+    # 作成日時(created_at)が新しい順に返ることを確認する
+    old_user = create_user(
+        db_session,
+        name="古いユーザー",
+        email="old@example.com",
+        role=UserRoleType.EMPLOYEE,
+        created_at=datetime(2026, 1, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+    )
+    new_user = create_user(
+        db_session,
+        name="新しいユーザー",
+        email="new@example.com",
+        role=UserRoleType.SUPPORT,
+        created_at=datetime(2026, 7, 1, tzinfo=ZoneInfo("Asia/Tokyo")),
+    )
+
+    result = get_employee_and_support_users(db_session)
+
+    assert [user.id for user in result] == [new_user.id, old_user.id]
+
+
+# ---------------------------------------------------------------------------------------
+
+
+def test_get_employee_and_support_users_returns_empty_list_when_only_admin_accounts_exist(
+    db_session: Session,
+) -> None:
+    # 管理者しか存在しない場合は空リストが返ることを確認する
+    create_user(db_session, role=UserRoleType.ADMIN)
+
+    result = get_employee_and_support_users(db_session)
+
+    assert result == []
