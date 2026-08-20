@@ -54,7 +54,7 @@ router = APIRouter()
     response_model=CreateTicketResponse,
     dependencies=[
         Depends(
-            require_role(UserRoleType.EMPLOYEE, message="社員アカウントのみチケットを作成できます")
+            require_role({UserRoleType.EMPLOYEE}, message="社員アカウントのみチケットを作成できます")
         )
     ],
 )
@@ -205,7 +205,7 @@ def create_ticket_comment(
     response_model=AssignTicketResponse,
     dependencies=[
         Depends(
-            require_role(UserRoleType.SUPPORT, message="サポート担当のみこの操作を実行できます")
+            require_role({UserRoleType.SUPPORT}, message="サポート担当のみこの操作を実行できます")
         )
     ],
 )
@@ -346,8 +346,7 @@ def update_ticket_status(
     dependencies=[
         Depends(
             require_role(
-                UserRoleType.ADMIN,
-                UserRoleType.SUPPORT,
+                {UserRoleType.ADMIN, UserRoleType.SUPPORT},
                 message="サポート担当、または管理者のみ公開設定を変更できます",
             )
         )

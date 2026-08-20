@@ -16,7 +16,7 @@ router = APIRouter()
     "",
     response_model=list[GetUsersResponseItem],
     dependencies=[
-        Depends(require_role(UserRoleType.ADMIN, message="管理者のみこの操作を実行できます"))
+        Depends(require_role({UserRoleType.ADMIN}, message="管理者のみこの操作を実行できます"))
     ],
 )
 def list_users(

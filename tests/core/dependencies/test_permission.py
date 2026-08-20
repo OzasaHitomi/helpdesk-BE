@@ -15,7 +15,7 @@ from tests.factories.user_factory import create_user
 # 正常系のテスト(許可したロールに一致する場合は例外を送出しない)
 def test_require_role_does_not_raise_when_user_role_is_allowed(db_session: Session) -> None:
     user = create_user(db_session, role=UserRoleType.ADMIN)
-    check_role = require_role(UserRoleType.ADMIN, message="管理者のみこの操作を実行できます")
+    check_role = require_role({UserRoleType.ADMIN}, message="管理者のみこの操作を実行できます")
 
     check_role(user)
 
@@ -29,8 +29,7 @@ def test_require_role_does_not_raise_when_user_role_matches_one_of_multiple_allo
 ) -> None:
     user = create_user(db_session, role=UserRoleType.SUPPORT)
     check_role = require_role(
-        UserRoleType.ADMIN,
-        UserRoleType.SUPPORT,
+        {UserRoleType.ADMIN, UserRoleType.SUPPORT},
         message="サポート担当、または管理者のみ実行できます",
     )
 
@@ -43,7 +42,7 @@ def test_require_role_does_not_raise_when_user_role_matches_one_of_multiple_allo
 # 異常系のテスト(許可したロールに一致しない場合は指定したメッセージで403)
 def test_require_role_raises_forbidden_when_user_role_is_not_allowed(db_session: Session) -> None:
     user = create_user(db_session, role=UserRoleType.EMPLOYEE)
-    check_role = require_role(UserRoleType.ADMIN, message="管理者のみこの操作を実行できます")
+    check_role = require_role({UserRoleType.ADMIN}, message="管理者のみこの操作を実行できます")
 
     with pytest.raises(ForbiddenException) as exc_info:
         check_role(user)
