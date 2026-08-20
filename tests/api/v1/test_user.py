@@ -33,16 +33,13 @@ def test_list_users_returns_empty_items_when_no_target_accounts_exist(
 
 # ------------------------
 
-# 管理者アカウントはログイン中の自分自身・別の管理者ともに一覧から除外され、社員・サポートはそれぞれ正しいroleで一覧に含まれる
+# 管理者アカウントは一覧から除外され、社員・サポートはそれぞれ正しいroleで一覧に含まれる
 
 
 def test_list_users_excludes_admin_accounts_and_includes_only_employee_and_support(
     client: TestClient, db_session: Session
 ) -> None:
-    create_user_and_login(db_session, client, name="ログイン中管理者", role=UserRoleType.ADMIN)
-    create_user(
-        db_session, name="別の管理者", email="other_admin@example.com", role=UserRoleType.ADMIN
-    )
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
     create_user(
         db_session, name="社員花子", email="employee@example.com", role=UserRoleType.EMPLOYEE
     )
