@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from helpdesk_be.core.dependencies.auth import get_current_user
 from helpdesk_be.core.dependencies.database import get_db
+from helpdesk_be.core.dependencies.permission import require_role
 from helpdesk_be.exceptions.business_exception import BusinessException
 from helpdesk_be.exceptions.forbidden_exception import ForbiddenException
 from helpdesk_be.exceptions.not_found_exception import NotFoundException
@@ -43,16 +44,23 @@ from helpdesk_be.store.enum.user_role_type import UserRoleType
 router = APIRouter()
 
 
-@router.post("", status_code=status.HTTP_201_CREATED, response_model=CreateTicketResponse)
+@router.post(
+    "",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CreateTicketResponse,
+    dependencies=[
+        Depends(
+            require_role(
+                {UserRoleType.EMPLOYEE}, message="社員アカウントのみチケットを作成できます"
+            )
+        )
+    ],
+)
 def create_ticket(
     body: CreateTicketRequest,
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db)],
 ) -> CreateTicketResponse:
-    # チケットの新規作成は社員アカウントのみ許可する
-    if user.role != UserRoleType.EMPLOYEE:
-        raise ForbiddenException("社員アカウントのみチケットを作成できます")
-
     new_ticket = Ticket(
         title=body.title,
         detail=body.detail,
@@ -217,16 +225,20 @@ def create_ticket_comment(
 # ------------------------
 
 
-@router.put("/{ticket_id}/assign", response_model=AssignTicketResponse)
+@router.put(
+    "/{ticket_id}/assign",
+    response_model=AssignTicketResponse,
+    dependencies=[
+        Depends(
+            require_role({UserRoleType.SUPPORT}, message="サポート担当のみこの操作を実行できます")
+        )
+    ],
+)
 def assign_ticket_to_self(
     ticket_id: int,
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db)],
 ) -> AssignTicketResponse:
-    # --- 権限チェック: 担当者の自己アサインはサポート担当のみ許可する ---
-    if user.role != UserRoleType.SUPPORT:
-        raise ForbiddenException("サポート担当のみこの操作を実行できます")
-
     # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
     ticket = get_ticket_by_id(session, ticket_id)
     if ticket is None:
@@ -380,22 +392,29 @@ def update_ticket_status(
 
 
 # 非公開 → 公開
-@router.put("/{ticket_id}/publish", response_model=PublishTicketResponse)
+@router.put(
+    "/{ticket_id}/publish",
+    response_model=PublishTicketResponse,
+    dependencies=[
+        Depends(
+            require_role(
+                {UserRoleType.ADMIN, UserRoleType.SUPPORT},
+                message="サポート担当、または管理者のみ公開設定を変更できます",
+            )
+        )
+    ],
+)
 def publish_ticket(
     ticket_id: int,
     user: Annotated[User, Depends(get_current_user)],
     session: Annotated[Session, Depends(get_db)],
 ) -> PublishTicketResponse:
-    # --- 権限チェック: ADMIN/SUPPORT(担当の有無を問わず全チケット対象)のみ変更可能。
-    #     質問者は非公開->公開に変更できない(unpublish側のみ許可) ---
-    if user.role not in (UserRoleType.ADMIN, UserRoleType.SUPPORT):
-        raise ForbiddenException("サポート担当、または管理者のみ公開設定を変更できます")
-
     # --- 存在チェック: 指定したチケットが存在しない場合は404 ---
     ticket = get_ticket_by_id(session, ticket_id)
     if ticket is None:
         raise NotFoundException("チケットが見つかりません")
 
+    # 質問者は非公開->公開に変更できない(unpublish側のみ許可)
     # --- 状態チェック: すでに公開の場合は無意味な操作として422(BusinessException)を返す ---
     if ticket.visibility == TicketVisibilityType.PUBLIC:
         raise BusinessException("既に公開設定です")
