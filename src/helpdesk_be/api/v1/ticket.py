@@ -50,7 +50,9 @@ router = APIRouter()
     response_model=CreateTicketResponse,
     dependencies=[
         Depends(
-            require_role({UserRoleType.EMPLOYEE}, message="社員アカウントのみチケットを作成できます")
+            require_role(
+                {UserRoleType.EMPLOYEE}, message="社員アカウントのみチケットを作成できます"
+            )
         )
     ],
 )
