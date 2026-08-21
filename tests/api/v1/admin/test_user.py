@@ -1,7 +1,12 @@
+import pytest
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from helpdesk_be.logic.security.password import verify_password
+from helpdesk_be.repositories.user import get_user_by_email
 from helpdesk_be.store.enum.user_role_type import UserRoleType
+from tests.conftest import RollbackTracker
 from tests.factories.auth_factory import create_user_and_login
 from tests.factories.user_factory import create_user
 
@@ -129,3 +134,225 @@ def test_list_users_with_support_role_returns_403(client: TestClient, db_session
 
     assert response.status_code == 403
     assert response.json()["detail"] == "管理者のみこの操作を実行できます"
+
+
+# ====================================================================
+# POST /users
+# ====================================================================
+
+# リクエストの形式
+# POST → name, email, password, role(employee/support)
+# レスポンスの形式
+# 201 → 作成したアカウント情報(id/name/email/role/isActive)を返す
+# 403 → 管理者以外のロールでログイン中
+# 422 → role=admin指定、パスワードが要件を満たさない、email重複のいずれか
+# 500 → DB登録処理自体が失敗（コミットエラー）
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 社員・サポート担当アカウントを新規登録できる
+@pytest.mark.parametrize(
+    ("role", "name", "email"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, "社員花子", "employee@example.com", id="employee"),
+        pytest.param(UserRoleType.SUPPORT, "サポート次郎", "support@example.com", id="support"),
+    ],
+)
+def test_create_user_with_employee_or_support_role_returns_201(
+    client: TestClient,
+    db_session: Session,
+    role: UserRoleType,
+    name: str,
+    email: str,
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": name,
+            "email": email,
+            "password": "Password1",
+            "role": role.value,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["name"] == name
+    assert body["email"] == email
+    assert body["role"] == role.value
+    assert body["isActive"] is True
+
+
+# ------------------------
+
+
+# パスワードは平文で保存されず、bcryptハッシュ化された状態でDBに保存される
+def test_create_user_stores_password_as_bcrypt_hash(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員花子",
+            "email": "employee@example.com",
+            "password": "Password1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 201
+    created_user = get_user_by_email(db_session, "employee@example.com")
+    assert created_user is not None
+    assert created_user.password_hash != "Password1"
+    assert verify_password("Password1", created_user.password_hash) is True
+
+
+# ------------------------
+
+# 準正常系のテスト
+# 管理者以外のロールでは新規登録できない
+
+
+# 社員ロールの場合は403
+def test_create_user_with_employee_login_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.EMPLOYEE)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員花子",
+            "email": "employee@example.com",
+            "password": "Password1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "管理者のみこの操作を実行できます"
+
+
+# ------------------------
+
+
+# サポート担当ロールの場合も403
+def test_create_user_with_support_login_returns_403(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.SUPPORT)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員花子",
+            "email": "employee@example.com",
+            "password": "Password1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "管理者のみこの操作を実行できます"
+
+
+# ------------------------
+
+# 異常系のテスト
+
+
+# roleにadminを指定した場合は422(このAPIでは社員・サポート担当者のみ発行できる)
+def test_create_user_with_admin_role_returns_422(client: TestClient, db_session: Session) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "管理者太郎",
+            "email": "admin2@example.com",
+            "password": "Password1",
+            "role": "admin",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "アカウントタイプは社員またはサポート担当者のみ指定できます"
+
+
+# ------------------------
+
+
+# パスワードが要件(8文字以上・数字・大文字を含む)を満たさない場合は422
+# 各要件の判定ロジック自体はtests/logic/business/test_password.pyで単体テスト済みのため、
+# ここではfield_validatorとして正しく組み込まれ422が返ることのみ確認する
+def test_create_user_with_too_short_password_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員花子",
+            "email": "employee@example.com",
+            "password": "Pass1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+# ------------------------
+
+
+# 既に存在するメールアドレスを指定した場合は422
+def test_create_user_with_duplicate_email_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    create_user(db_session, name="社員花子", email="employee@example.com")
+
+    response = client.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員次郎",
+            "email": "employee@example.com",
+            "password": "Password1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "このメールアドレスは既に登録されています"
+
+
+# ------------------------
+
+
+# DB登録処理自体が失敗した場合は500・rollbackが呼ばれる
+def test_create_user_returns_500_when_commit_fails(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    create_user_and_login(db_session, client_with_commit_error, role=UserRoleType.ADMIN)
+
+    response = client_with_commit_error.post(
+        "/api/v1/admin/users",
+        json={
+            "name": "社員花子",
+            "email": "employee@example.com",
+            "password": "Password1",
+            "role": "employee",
+        },
+    )
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True
