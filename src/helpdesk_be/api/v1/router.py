@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from helpdesk_be.api.v1.admin import router as admin_router
+from helpdesk_be.api.v1.admin.router import router as admin_router
 from helpdesk_be.api.v1.auth import router as auth_router
 from helpdesk_be.api.v1.ticket import router as ticket_router
 

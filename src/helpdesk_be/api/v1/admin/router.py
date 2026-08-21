@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from helpdesk_be.api.v1.user import router as user_router
+from helpdesk_be.api.v1.admin.user import router as user_router
 
 router = APIRouter()
 
