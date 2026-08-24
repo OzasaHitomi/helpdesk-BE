@@ -11,3 +11,12 @@ class GetUsersResponseItem(BaseV1ResponseSchema):
     email: str
     role: UserRoleType
     is_active: bool
+
+
+# アカウント新規登録APIのレスポンス
+class CreateUserResponse(BaseV1ResponseSchema):
+    id: int
+    name: str
+    email: str
+    role: UserRoleType
+    is_active: bool

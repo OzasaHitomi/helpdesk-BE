@@ -15,6 +15,7 @@ class CreateUserRequest(BaseV1RequestSchema):
     email: EmailStr
     # ハッシュ化前の生パスワード（DBにはそのまま保存せず、ロジック層でハッシュ化してから保存する）
     password: str
+    # このAPIで発行できるアカウントタイプは社員・サポート担当者のみ(ADMINはroute側でチェックする)
     role: UserRoleType
 
     # logic/validate/validate_password.pyの関数をpasswordフィールドのバリデータとして登録
