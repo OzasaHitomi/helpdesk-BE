@@ -57,9 +57,9 @@ def create_user(
     body: CreateUserRequest,
     session: Annotated[Session, Depends(get_db)],
 ) -> CreateUserResponse:
-    # --- 入力チェック: このAPIで発行できるアカウントタイプは社員・サポート担当者のみ ---
-    if body.role == UserRoleType.ADMIN:
-        raise BusinessException("アカウントタイプは社員またはサポート担当者のみ指定できます")
+    # --- 入力チェック: このAPIで発行できるアカウントタイプは社員・サポート担当者のみ(ホワイトリスト方式) ---
+    if body.role not in {UserRoleType.EMPLOYEE, UserRoleType.SUPPORT}:
+        raise BusinessException("要望のアカウント種別は作成できません")
 
     # --- 重複チェック: 既に同じメールアドレスのアカウントが存在する場合は422 ---
     if get_user_by_email(session, body.email) is not None:

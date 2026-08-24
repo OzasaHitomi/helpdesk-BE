@@ -282,7 +282,7 @@ def test_create_user_with_admin_role_returns_422(client: TestClient, db_session:
     )
 
     assert response.status_code == 422
-    assert response.json()["detail"] == "アカウントタイプは社員またはサポート担当者のみ指定できます"
+    assert response.json()["detail"] == "要望のアカウント種別は作成できません"
 
 
 # ------------------------
