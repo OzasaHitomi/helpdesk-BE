@@ -436,31 +436,29 @@ def test_deactivate_user_with_non_admin_login_returns_403(
 # 異常系のテスト
 
 
-# 存在しないuser_idを指定した場合は404
-def test_deactivate_user_with_nonexistent_id_returns_404(
-    client: TestClient, db_session: Session
+# 存在しないuser_idを指定した場合、対象が管理者ロールの場合(存在を推測させないため)いずれも404
+@pytest.mark.parametrize(
+    ("target_is_admin"),
+    [
+        pytest.param(False, id="nonexistent_id"),
+        pytest.param(True, id="admin_target"),
+    ],
+)
+def test_deactivate_user_returns_404(
+    client: TestClient,
+    db_session: Session,
+    target_is_admin: bool,
 ) -> None:
     create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    if target_is_admin:
+        target_user = create_user(
+            db_session, name="管理者次郎", email="admin2@example.com", role=UserRoleType.ADMIN
+        )
+        target_user_id = target_user.id
+    else:
+        target_user_id = 9999
 
-    response = client.put("/api/v1/admin/users/9999/deactivate")
-
-    assert response.status_code == 404
-    assert response.json()["detail"] == "ユーザーが見つかりません"
-
-
-# ------------------------
-
-
-# 対象が管理者ロールの場合も404(存在を推測させないため)
-def test_deactivate_user_with_admin_target_returns_404(
-    client: TestClient, db_session: Session
-) -> None:
-    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
-    target_user = create_user(
-        db_session, name="管理者次郎", email="admin2@example.com", role=UserRoleType.ADMIN
-    )
-
-    response = client.put(f"/api/v1/admin/users/{target_user.id}/deactivate")
+    response = client.put(f"/api/v1/admin/users/{target_user_id}/deactivate")
 
     assert response.status_code == 404
     assert response.json()["detail"] == "ユーザーが見つかりません"
