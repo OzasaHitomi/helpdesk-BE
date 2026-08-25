@@ -356,3 +356,148 @@ def test_create_user_returns_500_when_commit_fails(
 
     assert response.status_code == 500
     assert rollback_tracker.called is True
+
+
+# ====================================================================
+# PUT /users/{user_id}/deactivate
+# ====================================================================
+
+# リクエストの形式
+# PUT → パラメータなし
+# レスポンスの形式
+# 200 → 利用停止後のアカウント情報(id/name/email/role/isActive)を返す
+# 403 → 管理者以外のロールでログイン中
+# 404 → 対象ユーザーが存在しない、または対象が管理者ロールのいずれか
+# 422 → 対象が既に利用停止済み
+# 500 → DB更新処理自体が失敗(コミットエラー)
+#
+# 未ログイン時の401はget_current_user依存関数自体の挙動（tests/core/dependencies/test_auth.pyで単体テスト済み）
+# のため、ここでは重複してテストしない
+
+
+# 社員・サポート担当アカウントを利用停止にできる
+@pytest.mark.parametrize(
+    ("role", "name", "email"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, "社員花子", "employee@example.com", id="employee"),
+        pytest.param(UserRoleType.SUPPORT, "サポート次郎", "support@example.com", id="support"),
+    ],
+)
+def test_deactivate_user_returns_200(
+    client: TestClient,
+    db_session: Session,
+    role: UserRoleType,
+    name: str,
+    email: str,
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    target_user = create_user(db_session, name=name, email=email, role=role)
+
+    response = client.put(f"/api/v1/admin/users/{target_user.id}/deactivate")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == name
+    assert body["email"] == email
+    assert body["role"] == role.value
+    assert body["isActive"] is False
+
+
+# ------------------------
+
+# 準正常系のテスト
+# 管理者以外のロールでは利用停止にできない
+
+
+# 社員・サポート担当ロールの場合は403
+@pytest.mark.parametrize(
+    ("login_role"),
+    [
+        pytest.param(UserRoleType.EMPLOYEE, id="employee"),
+        pytest.param(UserRoleType.SUPPORT, id="support"),
+    ],
+)
+def test_deactivate_user_with_non_admin_login_returns_403(
+    client: TestClient,
+    db_session: Session,
+    login_role: UserRoleType,
+) -> None:
+    create_user_and_login(db_session, client, role=login_role)
+    target_user = create_user(db_session, name="社員花子", email="employee@example.com")
+
+    response = client.put(f"/api/v1/admin/users/{target_user.id}/deactivate")
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "管理者のみこの操作を実行できます"
+
+
+# ------------------------
+
+# 異常系のテスト
+
+
+# 存在しないuser_idを指定した場合、対象が管理者ロールの場合(存在を推測させないため)いずれも404
+@pytest.mark.parametrize(
+    ("target_is_admin"),
+    [
+        pytest.param(False, id="nonexistent_id"),
+        pytest.param(True, id="admin_target"),
+    ],
+)
+def test_deactivate_user_returns_404(
+    client: TestClient,
+    db_session: Session,
+    target_is_admin: bool,
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    if target_is_admin:
+        target_user = create_user(
+            db_session, name="管理者次郎", email="admin2@example.com", role=UserRoleType.ADMIN
+        )
+        target_user_id = target_user.id
+    else:
+        target_user_id = 9999
+
+    response = client.put(f"/api/v1/admin/users/{target_user_id}/deactivate")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "ユーザーが見つかりません"
+
+
+# ------------------------
+
+
+# 既に利用停止済みのユーザーを指定した場合は422
+def test_deactivate_user_with_already_inactive_target_returns_422(
+    client: TestClient, db_session: Session
+) -> None:
+    create_user_and_login(db_session, client, role=UserRoleType.ADMIN)
+    target_user = create_user(
+        db_session,
+        name="社員花子",
+        email="employee@example.com",
+        is_active=False,
+    )
+
+    response = client.put(f"/api/v1/admin/users/{target_user.id}/deactivate")
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "既に利用停止済みのユーザーです"
+
+
+# ------------------------
+
+
+# DB更新処理自体が失敗した場合は500・rollbackが呼ばれる
+def test_deactivate_user_returns_500_when_commit_fails(
+    db_session: Session,
+    client_with_commit_error: TestClient,
+    rollback_tracker: RollbackTracker,
+) -> None:
+    create_user_and_login(db_session, client_with_commit_error, role=UserRoleType.ADMIN)
+    target_user = create_user(db_session, name="社員花子", email="employee@example.com")
+
+    response = client_with_commit_error.put(f"/api/v1/admin/users/{target_user.id}/deactivate")
+
+    assert response.status_code == 500
+    assert rollback_tracker.called is True

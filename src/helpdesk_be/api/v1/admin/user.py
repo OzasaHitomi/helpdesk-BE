@@ -6,12 +6,21 @@ from sqlalchemy.orm import Session
 from helpdesk_be.core.dependencies.database import get_db
 from helpdesk_be.core.dependencies.permission import require_role
 from helpdesk_be.exceptions.business_exception import BusinessException
+from helpdesk_be.exceptions.not_found_exception import NotFoundException
 from helpdesk_be.loggers.custom_logger import logger
 from helpdesk_be.logic.security.password import hash_password
 from helpdesk_be.models.user import User
-from helpdesk_be.repositories.user import get_employee_and_support_users, get_user_by_email
+from helpdesk_be.repositories.user import (
+    get_employee_and_support_users,
+    get_user_by_email,
+    get_user_by_id,
+)
 from helpdesk_be.schemas.request.v1.user import CreateUserRequest
-from helpdesk_be.schemas.response.v1.user import CreateUserResponse, GetUsersResponseItem
+from helpdesk_be.schemas.response.v1.user import (
+    CreateUserResponse,
+    DeactivateUserResponse,
+    GetUsersResponseItem,
+)
 from helpdesk_be.store.enum.user_role_type import UserRoleType
 
 router = APIRouter()
@@ -86,4 +95,47 @@ def create_user(
         email=new_user.email,
         role=new_user.role,
         is_active=new_user.is_active,
+    )
+
+
+# ------------------------
+
+
+@router.put(
+    "/{user_id}/deactivate",
+    response_model=DeactivateUserResponse,
+    dependencies=[
+        Depends(require_role({UserRoleType.ADMIN}, message="管理者のみこの操作を実行できます"))
+    ],
+)
+def deactivate_user(
+    user_id: int,
+    session: Annotated[Session, Depends(get_db)],
+) -> DeactivateUserResponse:
+    # --- 存在チェック: 指定したユーザーが存在しない場合は404
+    #     管理者アカウントもこのAPIの対象外として404で扱う(一覧・作成APIで管理者を対象外にしているのと一貫。
+    #     存在を推測させないため403ではなく404にする) ---
+    target_user = get_user_by_id(session, user_id)
+    if target_user is None or target_user.role == UserRoleType.ADMIN:
+        raise NotFoundException("ユーザーが見つかりません")
+
+    # --- 状態チェック: 既に利用停止済みの場合は422 ---
+    if target_user.is_active is False:
+        raise BusinessException("既に利用停止済みのユーザーです")
+
+    # --- 更新処理: 利用停止状態に更新する ---
+    target_user.is_active = False
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to deactivate user {e}")
+        raise e
+
+    return DeactivateUserResponse(
+        id=target_user.id,
+        name=target_user.name,
+        email=target_user.email,
+        role=target_user.role,
+        is_active=target_user.is_active,
     )
