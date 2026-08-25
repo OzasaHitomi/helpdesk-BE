@@ -20,3 +20,12 @@ class CreateUserResponse(BaseV1ResponseSchema):
     email: str
     role: UserRoleType
     is_active: bool
+
+
+# アカウント利用停止APIのレスポンス
+class DeactivateUserResponse(BaseV1ResponseSchema):
+    id: int
+    name: str
+    email: str
+    role: UserRoleType
+    is_active: bool
