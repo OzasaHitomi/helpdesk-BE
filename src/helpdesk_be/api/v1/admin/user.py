@@ -17,6 +17,7 @@ from helpdesk_be.repositories.user import (
 )
 from helpdesk_be.schemas.request.v1.user import CreateUserRequest
 from helpdesk_be.schemas.response.v1.user import (
+    ActivateUserResponse,
     CreateUserResponse,
     DeactivateUserResponse,
     GetUsersResponseItem,
@@ -133,6 +134,49 @@ def deactivate_user(
         raise e
 
     return DeactivateUserResponse(
+        id=target_user.id,
+        name=target_user.name,
+        email=target_user.email,
+        role=target_user.role,
+        is_active=target_user.is_active,
+    )
+
+
+# ------------------------
+
+
+@router.put(
+    "/{user_id}/activate",
+    response_model=ActivateUserResponse,
+    dependencies=[
+        Depends(require_role({UserRoleType.ADMIN}, message="管理者のみこの操作を実行できます"))
+    ],
+)
+def activate_user(
+    user_id: int,
+    session: Annotated[Session, Depends(get_db)],
+) -> ActivateUserResponse:
+    # --- 存在チェック: 指定したユーザーが存在しない場合は404
+    #     管理者アカウントもこのAPIの対象外として404で扱う(一覧・作成・利用停止APIで管理者を対象外にしているのと一貫。
+    #     存在を推測させないため403ではなく404にする) ---
+    target_user = get_user_by_id(session, user_id)
+    if target_user is None or target_user.role == UserRoleType.ADMIN:
+        raise NotFoundException("ユーザーが見つかりません")
+
+    # --- 状態チェック: 既に有効な場合は422 ---
+    if target_user.is_active is True:
+        raise BusinessException("既に有効なユーザーです")
+
+    # --- 更新処理: 有効状態に更新する ---
+    target_user.is_active = True
+    try:
+        session.commit()
+    except Exception as e:
+        session.rollback()
+        logger.error(f"failed to activate user {e}")
+        raise e
+
+    return ActivateUserResponse(
         id=target_user.id,
         name=target_user.name,
         email=target_user.email,
