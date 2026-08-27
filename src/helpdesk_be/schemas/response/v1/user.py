@@ -29,3 +29,12 @@ class DeactivateUserResponse(BaseV1ResponseSchema):
     email: str
     role: UserRoleType
     is_active: bool
+
+
+# アカウント利用再開APIのレスポンス
+class ActivateUserResponse(BaseV1ResponseSchema):
+    id: int
+    name: str
+    email: str
+    role: UserRoleType
+    is_active: bool
